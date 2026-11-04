@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ProbablyStolen_FlatStorage</AssemblyName>
+    <Version>1.1.0</Version>
+    <RootNamespace>ProbablyStolen_FlatStorage</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- 项目位于游戏目录内的 Modding\ProbablyStolen_FlatStorage。 -->
+    <GameDir>$(MSBuildProjectDirectory)\..\..</GameDir>
+    <ManagedDir>$(GameDir)\Probably Stolen_Data\Managed</ManagedDir>
+    <ModInstallDir>$(GameDir)\Mods\ProbablyStolen_FlatStorage</ModInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove=".work\**;Tests\**" />
+    <Reference Include="UnityEngine.UI;Unity.TextMeshPro;UnityEngine.UIModule;UnityEngine.InputLegacyModule;Newtonsoft.Json">
+      <HintPath>$(ManagedDir)\%(Identity).dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(ManagedDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- 随模组发布的说明和资源文件。 -->
+  <ItemGroup>
+    <ModFile Include="manifest.xml;README.md;LICENSE;GAMEPLAY_CHECKLIST.md;Textures\**;Sounds\**;Localization\**;LootTables\**;Books\**" />
+    <None Remove="Textures\**;Sounds\**;Localization\**;LootTables\**;Books\**" />
+  </ItemGroup>
+
+  <!-- 默认编译后安装到游戏的 Mods 目录，SkipInstall=true 可以仅编译。 -->
+  <Target Name="InstallMod" AfterTargets="Build" Condition="'$(SkipInstall)' != 'true'">
+    <MakeDir Directories="$(ModInstallDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModInstallDir)" />
+    <Copy SourceFiles="@(ModFile)" DestinationFiles="@(ModFile->'$(ModInstallDir)\%(RecursiveDir)%(Filename)%(Extension)')" Condition="Exists('%(ModFile.FullPath)')" />
+    <Message Importance="high" Text="Installed into $(ModInstallDir)" />
+  </Target>
+
+</Project>

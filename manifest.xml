@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Manifest>
+  <ID>flat_storage</ID>
+  <Name>Flat Storage</Name>
+  <Author>gggxbbb</Author>
+  <ModVersion>1.1.0</ModVersion>
+  <Description>扁平存储：在可平移、缩放的画布中展开当前场景的仓储页面和机器控件，支持跨容器拖放。</Description>
+  <GameVersions />
+  <Prerequisites />
+  <!-- 模组入口程序集。 -->
+  <Assemblies>
+    <Assembly>ProbablyStolen_FlatStorage.dll</Assembly>
+  </Assemblies>
+  <!-- 能力声明由游戏提供的 ModScanner 检查。 -->
+  <Capabilities />
+</Manifest>

@@ -15,6 +15,34 @@ AssemblyLoadContext.Default.Resolving += (_, name) =>
 };
 var tests = new (string Name, Action Run)[]
 {
+    ("自动排列开关默认值与存档往返", () =>
+    {
+        Check(CanvasState.Decode(null).AutoArrange, "新布局默认启用");
+        Check(CanvasState.Decode("{\"Version\":1}").AutoArrange, "已有布局默认启用");
+        var state = new CanvasState { AutoArrange = false };
+        Check(!CanvasState.Decode(state.Encode()).AutoArrange, "关闭状态随布局保存");
+    }),
+    ("自动排列结构变化与拖动延后", () =>
+    {
+        var changes = new ArrangementChanges();
+        var a = new ArrangementLocation("a", "root", null, 1, 2, 120, 80);
+        var b = new ArrangementLocation("b", "root", null, 3, 2, 120, 80);
+        changes.Observe(new[] { a, b });
+        Check(changes.CanApply(true, false, false), "容器增加触发排列");
+        Check(!changes.CanApply(true, true, false), "拖动期间延后");
+        Check(!changes.CanApply(true, false, true), "平移期间延后");
+        Check(!changes.CanApply(false, false, false), "手动模式保留位置");
+        changes.Applied(); changes.Observe(new[] { b, a });
+        Check(!changes.Pending, "发现顺序变化保持位置");
+        changes.Observe(new[] { a }); Check(changes.Pending, "容器移除触发排列"); changes.Applied();
+        changes.Observe(new[] { new ArrangementLocation("a", "root", null, 2, 2, 120, 80) });
+        Check(changes.Pending, "原网格移动触发排列"); changes.Applied();
+        changes.Observe(new[] { new ArrangementLocation("a", "b", null, 2, 2, 120, 80) });
+        Check(changes.Pending, "容器归属变化触发排列"); changes.Applied();
+        changes.Observe(new[] { new ArrangementLocation("a", "b", null, 2, 2, 240, 80) });
+        Check(changes.Pending, "页面尺寸变化触发排列"); changes.Applied();
+        changes.Request(); Check(changes.CanApply(true, false, false), "重新开启开关请求排列");
+    }),
     ("内容、机器与标签相似度", ArrangementChecks.Similarity),
     ("柜台中心与嵌套容器紧密排列", ArrangementChecks.Layout),
     ("排列适应游戏显示比例", ArrangementChecks.Aspect),
@@ -143,6 +171,13 @@ var tests = new (string Name, Action Run)[]
         Reject(() => CanvasState.Decode("{\"Groups\":[{\"Id\":\"a\"},{\"Id\":\"a\"}]}"));
     }),
     ("程序集引用与 Harmony 目标", () => VerifyAssembly(workspace, managed)),
+    ("原生尺寸恢复字段实际接口", () =>
+    {
+        var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(workspace,
+            "bin/Release/netstandard2.1/ProbablyStolen_FlatStorage.dll"));
+        var type = assembly.GetType("ProbablyStolen_FlatStorage.NativeLayoutSizes", true);
+        type.GetMethod("Check", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
+    }),
     ("游戏 ModScanner 实际扫描", () => VerifyScanner(workspace, managed))
 };
 foreach (var test in tests) { test.Run(); Console.WriteLine("PASS " + test.Name); }
@@ -199,11 +234,11 @@ static void VerifyScanner(string workspace, string managed)
 {
     string dll = Path.Combine(workspace, "bin/Release/netstandard2.1/ProbablyStolen_FlatStorage.dll");
     var result = ModScanner.Scan(new[] { dll }, System.IO.Directory.GetFiles(managed, "*.dll").Select(Path.GetFileNameWithoutExtension));
+    Console.WriteLine(JsonConvert.SerializeObject(result, Formatting.Indented));
     Check(string.IsNullOrEmpty(result.Error), result.Error);
     foreach (var finding in result.HardFlags) Console.WriteLine("  " + finding.Kind + ": " + finding.Location + " " + finding.Target);
     Check(result.HardFlags.Count == 0, "能力扫描发现阻止加载的问题");
     var manifest = XDocument.Load(Path.Combine(workspace, "manifest.xml"));
     var declared = manifest.Root.Element("Capabilities").Elements().Select(e => e.Value).ToHashSet();
     Check(result.Capabilities.All(declared.Contains), "能力声明缺失");
-    Console.WriteLine(JsonConvert.SerializeObject(result, Formatting.Indented));
 }

@@ -16,7 +16,8 @@ namespace ProbablyStolen_FlatStorage
         internal bool MovingGroup => moving != null;
         internal int EscapeFrame { get; private set; } = -1;
         internal int PanReleaseFrame { get; private set; } = -1;
-        private TreeNodeRender entry, root, viewport, content, toolbar, status;
+        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel;
+        private ArrangementChanges arrangementChanges = new ArrangementChanges();
         private CanvasState state;
         private string scene, saveIdentity;
         private float nextRefresh;
@@ -86,13 +87,16 @@ namespace ProbablyStolen_FlatStorage
             scene = StorageDiscovery.SceneKey;
             saveIdentity = PlayerStore.Instance.runID + ":" + PlayerStore.Instance.saveSlotId;
             state = CanvasState.Decode(ModHelper.GetModData(ModEntry.Id, "layout:" + scene));
+            arrangementChanges = new ArrangementChanges();
             root = FlatUI.Panel(RenderHandler.current.windowRoot, "Flat Storage Canvas", new Color(.07f, .085f, .10f, .99f));
             toolbar = FlatUI.Panel(root, "Toolbar", new Color(.13f, .16f, .19f));
             FlatUI.Button(toolbar, "适应全部", 4, 56, Fit);
             FlatUI.Button(toolbar, "100%", 64, 40, () => { state.ZoomAt(ViewWidth / 2, ViewHeight / 2, 1); Apply(); Save(); });
             FlatUI.Button(toolbar, "重新排列", 108, 56, Arrange);
             FlatUI.Button(toolbar, "交易页面", 168, 56, OpenTrading);
-            FlatUI.Button(toolbar, "关闭", 228, 36, Close);
+            var automatic = FlatUI.Button(toolbar, state.AutoArrange ? "自动排列 开" : "自动排列 关", 228, 86, ToggleAutomatic);
+            automaticLabel = automatic.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
+            FlatUI.Button(toolbar, "关闭", 318, 36, Close);
             status = FlatUI.Text(toolbar, "", 7);
             viewport = FlatUI.Panel(root, "Viewport", Color.clear);
             viewport.mask.enabled = true;
@@ -105,7 +109,8 @@ namespace ProbablyStolen_FlatStorage
             try
             {
                 RefreshSources();
-                if (ModHelper.GetModData(ModEntry.Id, "layout:" + scene) == null) Arrange();
+                bool firstLayout = ModHelper.GetModData(ModEntry.Id, "layout:" + scene) == null;
+                if (state.AutoArrange || firstLayout) ArrangeLayout(firstLayout);
                 Apply();
             }
             catch
@@ -153,10 +158,11 @@ namespace ProbablyStolen_FlatStorage
             float left = top.x - parent.rect.xMin, topOffset = parent.rect.yMax - top.y;
             NativeAccess.Place(entry, bottom.x - parent.rect.xMin - 70, topOffset + 4, 62, 18);
             if (!IsOpen) return;
+            arrangementChanges.Request();
             float width = bottom.x - top.x, height = top.y - bottom.y;
             NativeAccess.Place(root, left, topOffset, width, height);
             NativeAccess.Place(toolbar, 0, Math.Max(0, height - 24), width, 24);
-            NativeAccess.Place(status, 270, 0, Math.Max(1, width - 274), 24);
+            NativeAccess.Place(status, 360, 0, Math.Max(1, width - 364), 24);
             NativeAccess.Place(viewport, 0, 0, width, Math.Max(1, height - 24));
         }
 
@@ -191,7 +197,7 @@ namespace ProbablyStolen_FlatStorage
 
         internal void BeginGroupDrag(WindowLease group)
         {
-            if (Panning || IsItemDragging) return;
+            if (state.AutoArrange || Panning || IsItemDragging) return;
             moving = group;
             lastPointer = Pointer();
             group.Group.rectTransform.SetAsLastSibling();
@@ -210,6 +216,8 @@ namespace ProbablyStolen_FlatStorage
             { CloseWithoutSave(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && !StoreUIManager.IsAnyTyping())
             {
+                if (NegociationUIManager.Instance != null && NegociationUIManager.Instance.IsOpen && !IsItemDragging)
+                    return;
                 EscapeFrame = Time.frameCount;
                 if (IsItemDragging) { NativeAccess.CancelDrag(); return; }
                 Close(); return;
@@ -228,7 +236,7 @@ namespace ProbablyStolen_FlatStorage
             if (Input.GetMouseButtonDown(1) && !IsItemDragging && !MovingGroup && PointerOnBlank()) RightPanning = true;
             bool panKey = (RightPanning && Input.GetMouseButton(1)) || Input.GetMouseButton(2) ||
                 (Input.GetKey(KeyCode.Space) && Input.GetMouseButton(0) && !StoreUIManager.IsAnyTyping());
-            bool canPan = PointerInViewport && (OwnsPointer() || IsItemDragging);
+            bool canPan = PointerInViewport && OwnsPointer();
             if (panKey && !Panning && canPan) { Panning = true; moving = null; lastPointer = pointer; }
             if (Panning)
             {
@@ -248,7 +256,7 @@ namespace ProbablyStolen_FlatStorage
             lastPointer = pointer;
             if (canPan && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl) && Input.mouseScrollDelta.y != 0)
             { state.ZoomAt(pointer.x, pointer.y, state.Zoom * Mathf.Pow(1.12f, Input.mouseScrollDelta.y)); Save(); }
-            if (IsItemDragging && PointerInViewport && !Panning)
+            if (IsItemDragging && PointerInViewport && OwnsPointer() && !Panning)
             {
                 const float edge = 18;
                 float dx = pointer.x < edge ? edge - pointer.x : pointer.x > ViewWidth - edge ? ViewWidth - edge - pointer.x : 0;
@@ -258,6 +266,7 @@ namespace ProbablyStolen_FlatStorage
             }
             if (Time.unscaledTime >= nextRefresh)
             { nextRefresh = Time.unscaledTime + .25f; RefreshSources(); }
+            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging, Panning)) ArrangeLayout(false);
             Apply();
         }
 
@@ -287,6 +296,9 @@ namespace ProbablyStolen_FlatStorage
                 leases.Add(new WindowLease(source, content, position));
             }
             foreach (var lease in leases) lease.Refresh();
+            arrangementChanges.Observe(leases.Select(l => new ArrangementLocation(l.Source.Id, l.Source.ParentId,
+                l.Source.Owner?.parentInventory, l.Source.Owner?.modifiedShape.minX ?? 0,
+                l.Source.Owner?.modifiedShape.minY ?? 0, l.Width, l.Height)));
         }
 
         private void Apply()
@@ -319,12 +331,33 @@ namespace ProbablyStolen_FlatStorage
         private void Arrange()
         {
             NativeAccess.CancelDrag();
+            ArrangeLayout(true);
+        }
+
+        private void ArrangeLayout(bool fit)
+        {
             moving = null;
             var groups = leases.Select(l => StorageArrangementSource.Read(l.Source, l.Bounds)).ToList();
             var boxes = StorageArrangement.Arrange(groups, (float)Screen.width / Math.Max(1, Screen.height));
             for (int i = 0; i < leases.Count; i++)
             { leases[i].Position.X = boxes[i].X; leases[i].Position.Y = boxes[i].Y; leases[i].Refresh(); }
-            Fit();
+            arrangementChanges.Applied();
+            if (fit) Fit();
+            else { Apply(); Save(); }
+        }
+
+        private void ToggleAutomatic()
+        {
+            state.AutoArrange = !state.AutoArrange;
+            automaticLabel.text.text = state.AutoArrange ? "自动排列 开" : "自动排列 关";
+            moving = null;
+            if (state.AutoArrange)
+            {
+                arrangementChanges.Request();
+                RefreshSources();
+                if (!IsItemDragging && !Panning) ArrangeLayout(false);
+            }
+            Save();
         }
 
         private void OpenTrading()
@@ -333,7 +366,10 @@ namespace ProbablyStolen_FlatStorage
             var trading = NegociationUIManager.Instance;
             if (trading == null || trading.uiObject == null)
                 throw new InvalidOperationException("游戏交易页面尚未初始化。");
-            Close();
+            NativeAccess.CancelDrag();
+            moving = null; Panning = false; RightPanning = false;
+            Save();
+            UIFamilyLayer.BringPanelsToFront();
             trading.OpenUI();
         }
     }

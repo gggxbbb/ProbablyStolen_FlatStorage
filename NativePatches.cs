@@ -181,7 +181,7 @@ namespace ProbablyStolen_FlatStorage
         private static bool Prefix()
         {
             var c = FlatStorageController.Current;
-            return c == null || !c.PointerInViewport || (!c.OwnsPointer() && !FlatStorageController.IsItemDragging) || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            return c == null || !c.PointerInViewport || !c.OwnsPointer() || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
         }
     }
 
@@ -189,6 +189,7 @@ namespace ProbablyStolen_FlatStorage
     internal static class CanvasPointerScrollPriority
     {
         private static bool Prefix() => FlatStorageController.Current == null || !FlatStorageController.Current.PointerInViewport ||
+            !FlatStorageController.Current.OwnsPointer() ||
             Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
     }
 

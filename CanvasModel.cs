@@ -15,6 +15,7 @@ namespace ProbablyStolen_FlatStorage
     public sealed class CanvasState
     {
         public int Version = 1;
+        public bool AutoArrange = true;
         public float Zoom = 1;
         public float PanX = 16;
         public float PanY = 16;

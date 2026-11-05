@@ -38,6 +38,6 @@ namespace ProbablyStolen_FlatStorage
         }
 
         private static bool ExistingItem(string text, ISet<int> existingItems) =>
-            int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int id) && id > 0 && existingItems.Contains(id);
+            int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int id) && id != 0 && existingItems.Contains(id);
     }
 }

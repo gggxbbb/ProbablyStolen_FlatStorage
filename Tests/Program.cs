@@ -160,6 +160,7 @@ var tests = new (string Name, Action Run)[]
         Reject(() => CanvasState.Decode("{\"Groups\":[{\"Id\":\"a\"},{\"Id\":\"a\"}]}"));
     }),
     ("配置默认值与已有场景布局", RoadmapChecks.Defaults),
+    ("正负物品编号的打开记录与跨场景布局", RoadmapChecks.SignedPruning),
     ("存档清理保留跨场景物品", RoadmapChecks.Pruning),
     ("存档清理拒绝损坏布局", RoadmapChecks.InvalidPruning),
     ("双语 CSV 词条与格式", () => RoadmapChecks.Localization(workspace)),

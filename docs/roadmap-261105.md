@@ -6,7 +6,7 @@
 
 - [x] **场景切换保存布局**：`FlatStorageController.Close()` 按旧场景键保存，`Save()` 核对存档身份。读档前通过 `ModHook.OnGameLoadedInit` 释放原生窗口。
 - [x] **异常处理与重新打开**：当前画布操作遇到异常立即终止，恢复原生窗口，通过 `ModLog` 记录异常并显示告警；用户可以重新打开画布。交易界面尚未就绪时提示原因并停止当前操作。
-- [x] **清理 modData**：`SaveDataMaintenance` 和 `SaveDataPruning` 在读档后清理失效的打开记录及分组坐标，保留完整物品图中的跨场景记录。持久化标识必须为正数。
+- [x] **清理 modData**：`SaveDataMaintenance` 和 `SaveDataPruning` 在读档后清理失效的打开记录及分组坐标，保留完整物品图中的跨场景记录。持久化标识支持正数和游戏内置的负数编号，零表示尚未分配编号。
 - [x] **声明兼容版本**：`manifest.xml` 使用 `<GameVersions><Version>100-Rev6</Version></GameVersions>`。
 - [x] **排列入口**：排列统一使用 `StorageArrangement.Arrange`，`CanvasMath` 提供视口计算。
 

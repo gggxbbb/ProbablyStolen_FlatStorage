@@ -67,6 +67,45 @@ internal static class RoadmapChecks
         Check(data["layout:store"] == retained, "重复清理保持数据");
     }
 
+    internal static void SignedPruning()
+    {
+        int[] retainedIds = { -103, -102, -101, int.MinValue, 12, int.MaxValue };
+        string[] removedIds = { "-104", "13", "0", "-0", "bad", "--103", "-2147483649", "2147483648" };
+        var state = new CanvasState { Zoom = .75f, PanX = 85, AutoArrange = false };
+        var data = new Dictionary<string, string>();
+        foreach (int id in retainedIds)
+        {
+            string text = id.ToString(CultureInfo.InvariantCulture);
+            data["opened:" + text] = "true";
+            state.Groups.Add(new GroupPosition { Id = "item:" + text, X = -34, Y = 56 });
+        }
+        foreach (string text in removedIds)
+        {
+            data["opened:" + text] = "true";
+            state.Groups.Add(new GroupPosition { Id = "item:" + text });
+        }
+        string[] layouts = { "layout:store", "layout:outside:night_market" };
+        foreach (string key in layouts) data[key] = state.Encode();
+        var existing = retainedIds.Append(0).ToHashSet();
+        SaveDataPruning.Prune(data, existing);
+        foreach (int id in retainedIds)
+            Check(data.TryGetValue("opened:" + id.ToString(CultureInfo.InvariantCulture), out string value) && value == "true",
+                "保留有效物品打开记录：" + id);
+        foreach (string id in removedIds)
+            Check(!data.ContainsKey("opened:" + id), "删除失效物品打开记录：" + id);
+        foreach (string key in layouts)
+        {
+            var restored = CanvasState.Decode(data[key]);
+            Check(restored.Groups.Select(g => g.Id).SequenceEqual(retainedIds.Select(id => "item:" + id.ToString(CultureInfo.InvariantCulture))),
+                "跨场景保留有效正负编号分组：" + key);
+            Check(restored.Groups.All(g => g.X == -34 && g.Y == 56) && restored.Zoom == .75f &&
+                restored.PanX == 85 && !restored.AutoArrange, "清理保留布局坐标和视口：" + key);
+        }
+        var firstPass = new Dictionary<string, string>(data);
+        SaveDataPruning.Prune(data, existing);
+        Check(data.Count == firstPass.Count && firstPass.All(pair => data[pair.Key] == pair.Value), "重复清理保留正负编号记录");
+    }
+
     internal static void InvalidPruning()
     {
         foreach (string bad in new[] { "{", "null", "{\"Version\":99}", "{\"Zoom\":0}" })

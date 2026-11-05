@@ -32,7 +32,7 @@ namespace ProbablyStolen_FlatStorage
         internal static int PersistentId(GameItem item)
         {
             int id = item.GetUniqueID();
-            if (id <= 0) throw new System.InvalidOperationException("Invalid Flat Storage item identity: " + id);
+            if (id == 0) throw new System.InvalidOperationException("Invalid Flat Storage item identity: " + id);
             return id;
         }
     }

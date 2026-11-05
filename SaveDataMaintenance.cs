@@ -15,7 +15,7 @@ namespace ProbablyStolen_FlatStorage
             {
                 if (node == null || !visited.Add(node)) return;
                 if (node is GameItemElement element && element.IsDestroyed()) return;
-                if (node is GameItem item && item.uniqueId > 0) liveItems.Add(item.uniqueId);
+                if (node is GameItem item && item.uniqueId != 0) liveItems.Add(item.uniqueId);
                 if (node.children != null)
                     foreach (var child in node.children) Visit(child);
             }

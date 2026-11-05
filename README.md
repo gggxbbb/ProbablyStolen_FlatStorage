@@ -2,7 +2,7 @@
 
 《深空当铺》（Probably Stolen）的全局仓储模组。在可平移、缩放的画布中展开容器的全部已解锁页面和机器控件，保留原有网格、物品占格及容量，支持跨容器、跨机器、跨页面拖放。
 
-当前开发版本为 **1.3.0**，声明支持游戏 `VERSION 100-Rev6`。Release 构建与 37 项游戏外测试已通过；游戏内验收由使用者执行，发布安排在验收完成之后。具体项目见 [验证清单](GAMEPLAY_CHECKLIST.md)。
+当前开发版本为 **1.3.0**，声明支持游戏 `VERSION 100-Rev6`。Release 构建与 38 项游戏外测试已通过；游戏内验收由使用者执行，发布安排在验收完成之后。具体项目见 [验证清单](GAMEPLAY_CHECKLIST.md)。
 
 ## 安装与打开
 
@@ -118,7 +118,7 @@ dotnet build -c Release -p:SkipInstall=true '-p:GameDir=D:\Games\Probably Stolen
 dotnet run --project Tests/FlatStorage.Tests.csproj '-p:ManagedDir=D:\Games\Probably Stolen\Probably Stolen_Data\Managed' -- . 'D:\Games\Probably Stolen\Probably Stolen_Data\Managed'
 ```
 
-Release 构建和 37 项游戏外测试已通过。测试覆盖配置默认值、场景布局与数据清理、中英文资源、搜索筛选、小地图映射、真实 `GridShape` 的批量预览占格，以及原有缩放、排列、坐标变换和存档读写行为。
+Release 构建和 38 项游戏外测试已通过。测试覆盖配置默认值、场景布局与数据清理、正负物品编号的打开记录及布局保留、中英文资源、搜索筛选、小地图映射、真实 `GridShape` 的批量预览占格，以及原有缩放、排列、坐标变换和存档读写行为。
 
 程序集检查覆盖 21 个 Harmony 目标、原生窗口尺寸与机器分页字段、`CustomUIManager` 接口及生命周期事件。使用游戏程序集中的 `ModScanner` 执行的游戏外扫描结果为零发现。Unity 渲染、指针交互、机器运行和完整批量转移的游戏内结果，由使用者按 [游戏内验证清单](GAMEPLAY_CHECKLIST.md) 确认。
 

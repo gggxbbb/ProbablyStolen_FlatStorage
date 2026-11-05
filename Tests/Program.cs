@@ -15,6 +15,7 @@ AssemblyLoadContext.Default.Resolving += (_, name) =>
 };
 var tests = new (string Name, Action Run)[]
 {
+    ("真实清单与游戏兼容版本", () => GameVersionChecks.Manifest(workspace, managed)),
     ("自动排列开关默认值与存档往返", () =>
     {
         Check(CanvasState.Decode(null).AutoArrange, "新布局默认启用");

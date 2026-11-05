@@ -25,7 +25,8 @@ function Invoke-ReleaseCommand {
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $root 'manifest.xml') -Raw
 $version = [string]$project.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
 if ($manifest.Manifest.ModVersion -ne $version -or $manifest.Manifest.ID -ne 'flat_storage' -or
-    $manifest.Manifest.GameVersions.Version -ne '100-Rev6') {
+    @($manifest.Manifest.GameVersions.Version).Count -ne 1 -or
+    [string]$manifest.Manifest.GameVersions.Version -cne '0.46D') {
     throw '项目版本、模组清单或支持的游戏版本无效。'
 }
 

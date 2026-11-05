@@ -1,13 +1,13 @@
 # 扁平存储 Flat Storage 路线图
 
-本路线图的实现版本为 1.3.0，兼容游戏 `100-Rev6`。物品移动使用原生 `TryInventorySlot`、`MayPlayerInsertInto` 和 `SlotMarker.TryAcceptOnce`，遵循占格、容量、归属、嵌套及机器限制。
+本路线图的实现版本为 1.3.0，兼容游戏版本 `0.46D`，主菜单标记为 `100-Rev6`。物品移动使用原生 `TryInventorySlot`、`MayPlayerInsertInto` 和 `SlotMarker.TryAcceptOnce`，遵循占格、容量、归属、嵌套及机器限制。
 
 ## 1.3.x · 一、稳定性修复（优先）
 
 - [x] **场景切换保存布局**：`FlatStorageController.Close()` 按旧场景键保存，`Save()` 核对存档身份。读档前通过 `ModHook.OnGameLoadedInit` 释放原生窗口。
 - [x] **异常处理与重新打开**：当前画布操作遇到异常立即终止，恢复原生窗口，通过 `ModLog` 记录异常并显示告警；用户可以重新打开画布。交易界面尚未就绪时提示原因并停止当前操作。
 - [x] **清理 modData**：`SaveDataMaintenance` 和 `SaveDataPruning` 在读档后清理失效的打开记录及分组坐标，保留完整物品图中的跨场景记录。持久化标识支持正数和游戏内置的负数编号，零表示尚未分配编号。
-- [x] **声明兼容版本**：`manifest.xml` 使用 `<GameVersions><Version>100-Rev6</Version></GameVersions>`。
+- [x] **声明兼容版本**：`manifest.xml` 使用 `<GameVersions><Version>0.46D</Version></GameVersions>`，匹配游戏用于兼容性判断的 `Application.version`；游戏外测试调用原生清单读取和版本规范化方法验证声明。
 - [x] **排列入口**：排列统一使用 `StorageArrangement.Arrange`，`CanvasMath` 提供视口计算。
 
 ## 1.3.x · 二、体验与性能

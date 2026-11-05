@@ -20,6 +20,6 @@ Configure the shortcut, default zoom, refresh interval, edge-pan speed and autom
 Open containers through the native interface before using them here, and unlock locked containers first. Item transfers respect the game's ownership, shape, capacity, item-type and machine restrictions.
 
 Mod version: 1.3.0
-Supported game version: 100-Rev6
+Supported game compatibility version: 0.46D (main menu version 100-Rev6)
 Source and instructions: https://github.com/gggxbbb/ProbablyStolen_FlatStorage
 Code license: MIT

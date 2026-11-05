@@ -17,24 +17,28 @@ namespace ProbablyStolen_FlatStorage
             if (!validating.Add(__instance)) return false;
             try
             {
+                lease.CaptureTabState(__instance);
                 var strip = (TreeNodeRender)NativeAccess.TabStrip.GetValue(__instance);
                 var underline = (TreeNodeRender)NativeAccess.TabUnderline.GetValue(__instance);
                 float x = 0, height = 0;
                 for (int i = 0; i < __instance.count; i++)
                 {
-                    var page = __instance.GetPage(i);
+                    var nodes = NativeTabsAccess.Get(__instance, i);
+                    var page = nodes.Page;
                     if (page == null) continue;
-                    var plate = strip.transform.GetChild(i * 2).GetComponent<TreeNodeRender>();
-                    var text = strip.transform.GetChild(i * 2 + 1).GetComponent<TreeNodeRender>();
+                    var plate = nodes.Plate;
+                    var text = nodes.Text;
                     text.text.text = StorageLabels.Title(lease.Source.OwnLabel, __instance.GetCaption(i),
                         lease.Source.Owner?.GetDisplayName() ?? lease.Source.OwnLabel);
+                    text.text.enableWordWrapping = false;
+                    text.text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
                     bool visible = !(page is MachineryPanel panel && panel.isHidden);
                     plate.gameObject.SetActive(visible);
                     text.gameObject.SetActive(visible);
                     page.handler.gameObject.SetActive(visible);
                     if (!visible) continue;
                     page.Validate();
-                    float width = Mathf.Max(32, page.widthPixels, text.text.preferredWidth + 8);
+                    float width = Mathf.Max(32, page.widthPixels);
                     NativeAccess.Place(plate, x, 0, width, 12);
                     NativeAccess.Place(text, x + 4, 0, width - 8, 12);
                     NativeAccess.Place(page.handler, x, 0, page.widthPixels, page.heightPixels);
@@ -161,13 +165,15 @@ namespace ProbablyStolen_FlatStorage
     [HarmonyPatch(typeof(InputActionHandler), nameof(InputActionHandler.UpdatePress))]
     internal static class CanvasInputPriority
     {
-        private static void Prefix(ref ISet<KeyCode> keysPressed)
+        private static void Prefix(InputActionHandler __instance, ref ISet<KeyCode> keysPressed)
         {
             var controller = FlatStorageController.Current;
             if (controller == null || (!controller.IsOpen && controller.EscapeFrame != Time.frameCount)) return;
             keysPressed = new HashSet<KeyCode>(keysPressed);
             if (controller.EscapeFrame == Time.frameCount) keysPressed.Remove(KeyCode.Escape);
             if (!controller.IsOpen) return;
+            if (__instance is ItemMouseDragHandler && controller.OwnsInventoryPointer && StoreUIManager.Instance != null)
+                StoreUIManager.Instance.hoveringStoreUI = false;
             keysPressed.Remove(KeyCode.Mouse2);
             if (controller.RightPanning || controller.PanReleaseFrame == Time.frameCount) keysPressed.Remove(KeyCode.Mouse1);
             if (controller.Panning || controller.MovingGroup || Input.GetKey(KeyCode.Space))
@@ -297,18 +303,6 @@ namespace ProbablyStolen_FlatStorage
         private static void Prefix() => FlatStorageController.Current?.Save();
     }
 
-    [HarmonyPatch(typeof(PlayerStore), nameof(PlayerStore.LoadGame))]
-    internal static class ReleaseBeforeLoad
-    {
-        private static void Prefix() => FlatStorageController.Current?.CloseWithoutSave();
-    }
-
-    [HarmonyPatch(typeof(MapUIManager), nameof(MapUIManager.Travel))]
-    internal static class ReleaseBeforeTravel
-    {
-        private static void Prefix() => FlatStorageController.Current?.Close();
-    }
-
     [HarmonyPatch(typeof(ItemMouseDragHandler), "EndDrag")]
     internal static class ValidateDrop
     {
@@ -324,7 +318,7 @@ namespace ProbablyStolen_FlatStorage
             {
                 var slot = ___lastInventory.TryInventorySlot(item, ___currentRemove, graphic.GetFakeRotatorCenteredPosition(), graphic.tempShape, item.modifiedState);
                 if (!GeneralHelper.MayPlayerInsertInto(___lastInventory) || slot == null || !slot.IsValid())
-                    controller.Notice("目标位置不允许放置此物品，请检查空位、容量和机器限制。");
+                    controller.Notice(ModText.Get("drop.rejected"));
             }
             return true;
         }

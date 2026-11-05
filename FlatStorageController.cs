@@ -16,7 +16,13 @@ namespace ProbablyStolen_FlatStorage
         internal bool MovingGroup => moving != null;
         internal int EscapeFrame { get; private set; } = -1;
         internal int PanReleaseFrame { get; private set; } = -1;
-        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel;
+        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel, searchbar, errorLabel;
+        private CustomUIWindow window;
+        private CanvasTools tools;
+        private readonly List<TreeNodeRender> toolbarButtons = new List<TreeNodeRender>();
+        private bool viewDirty;
+        private float appliedX, appliedY, appliedZoom, appliedWidth, appliedHeight;
+        private Vector3 nativeScale;
         private ArrangementChanges arrangementChanges = new ArrangementChanges();
         private CanvasState state;
         private string scene, saveIdentity;
@@ -32,7 +38,7 @@ namespace ProbablyStolen_FlatStorage
         private void Awake()
         {
             Current = this;
-            entry = FlatUI.Button(RenderHandler.current.windowRoot, "扁平存储", 0, 62, Toggle);
+            entry = FlatUI.Button(RenderHandler.current.windowRoot, ModText.Get("ui.title"), 0, 78, Toggle);
             Resize();
         }
 
@@ -51,28 +57,23 @@ namespace ProbablyStolen_FlatStorage
             if (Current == this) Current = null;
         }
 
-        public void Toggle()
+        public void Toggle() => Run(() => { if (IsOpen) Close(); else Open(); });
+
+        internal void Run(Action action)
         {
-            if (!enabled) return;
-            try { if (IsOpen) Close(); else Open(); }
-            catch (Exception error)
-            {
-                ReportFailure(error);
-                throw;
-            }
+            try { action(); }
+            catch (Exception error) { ReportFailure(error); }
         }
 
         private void ReportFailure(Exception error)
         {
+            ModEntry.Instance.Log.Error(error);
             CloseWithoutSave();
-            enabled = false;
-            var label = entry.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
-            label.text.text = "仓储错误";
-            label.text.overflowMode = TMPro.TextOverflowModes.Overflow;
-            var details = FlatUI.Text(entry, "扁平存储已停止：" + error.Message, 7);
-            NativeAccess.Place(details, -260, 24, 320, 44);
-            details.text.enableWordWrapping = true;
-            Debug.LogException(error);
+            if (entry == null) return;
+            if (errorLabel != null) Destroy(errorLabel.gameObject);
+            errorLabel = FlatUI.Text(entry, ModText.Get("ui.error", error.Message), 7);
+            NativeAccess.Place(errorLabel, -240, 24, 320, 60);
+            errorLabel.text.enableWordWrapping = true;
         }
 
         internal void Notice(string message)
@@ -86,38 +87,54 @@ namespace ProbablyStolen_FlatStorage
             NativeAccess.CancelDrag();
             scene = StorageDiscovery.SceneKey;
             saveIdentity = PlayerStore.Instance.runID + ":" + PlayerStore.Instance.saveSlotId;
-            state = CanvasState.Decode(ModHelper.GetModData(ModEntry.Id, "layout:" + scene));
+            string layout = ModHelper.GetModData(ModEntry.Id, "layout:" + scene);
+            state = ModSettings.CreateCanvasState(layout);
             arrangementChanges = new ArrangementChanges();
-            root = FlatUI.Panel(RenderHandler.current.windowRoot, "Flat Storage Canvas", new Color(.07f, .085f, .10f, .99f));
+            if (errorLabel != null) Destroy(errorLabel.gameObject);
+            IsOpen = true;
+            window = FlatUI.Window("canvas", ModText.Get("ui.title"), () => { window = null; Run(Close); }, true);
+            FlatUI.ManualLayout(window.ContentRoot);
+            root = TreeNodeRender.InstantiateAsRoot(window.ContentRoot);
+            root.image.sprite = null;
+            root.image.color = new Color(.07f, .085f, .10f, .99f);
+            root.image.enabled = true;
+            root.image.raycastTarget = true;
+            root.mask.enabled = false;
             toolbar = FlatUI.Panel(root, "Toolbar", new Color(.13f, .16f, .19f));
-            FlatUI.Button(toolbar, "适应全部", 4, 56, Fit);
-            FlatUI.Button(toolbar, "100%", 64, 40, () => { state.ZoomAt(ViewWidth / 2, ViewHeight / 2, 1); Apply(); Save(); });
-            FlatUI.Button(toolbar, "重新排列", 108, 56, Arrange);
-            FlatUI.Button(toolbar, "交易页面", 168, 56, OpenTrading);
-            var automatic = FlatUI.Button(toolbar, state.AutoArrange ? "自动排列 开" : "自动排列 关", 228, 86, ToggleAutomatic);
+            toolbarButtons.Clear();
+            AddButton(ModText.Get("ui.fit"), 58, Fit);
+            AddButton("100%", 40, () => { state.ZoomAt(ViewWidth / 2, ViewHeight / 2, 1); Apply(); Save(); });
+            AddButton(ModText.Get("ui.arrange"), 62, Arrange);
+            AddButton(ModText.Get("ui.trading"), 62, OpenTrading);
+            var automatic = AddButton(ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off"), 96, ToggleAutomatic);
             automaticLabel = automatic.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
-            FlatUI.Button(toolbar, "关闭", 318, 36, Close);
+            AddButton(ModText.Get("ui.close"), 44, Close);
             status = FlatUI.Text(toolbar, "", 7);
+            searchbar = FlatUI.Panel(root, "Search", new Color(.13f, .16f, .19f));
             viewport = FlatUI.Panel(root, "Viewport", Color.clear);
             viewport.mask.enabled = true;
             content = FlatUI.Panel(viewport, "Canvas Content", Color.clear);
             content.image.raycastTarget = false;
             NativeAccess.Place(content, 0, 0, 0, 0);
-            IsOpen = true;
+            tools = new CanvasTools(this, window, searchbar);
             entry.gameObject.SetActive(false);
             Resize();
-            try
+            RefreshSources();
+            if (state.AutoArrange || layout == null) ArrangeLayout(false);
+            if (layout == null && leases.Count > 0)
             {
-                RefreshSources();
-                bool firstLayout = ModHelper.GetModData(ModEntry.Id, "layout:" + scene) == null;
-                if (state.AutoArrange || firstLayout) ArrangeLayout(firstLayout);
-                Apply();
+                var center = leases.FirstOrDefault(l => l.Source.Id == "root:back") ?? leases[0];
+                Focus(center.Bounds);
             }
-            catch
-            {
-                CloseWithoutSave();
-                throw;
-            }
+            Apply();
+            UpdateStatus();
+        }
+
+        private TreeNodeRender AddButton(string label, float width, Action action)
+        {
+            var button = FlatUI.Button(toolbar, label, 0, width, () => Run(action));
+            toolbarButtons.Add(button);
+            return button;
         }
 
         public void Close()
@@ -133,9 +150,15 @@ namespace ProbablyStolen_FlatStorage
             NativeAccess.CancelDrag();
             IsOpen = false;
             moving = null; Panning = false; RightPanning = false;
+            tools?.Dispose(); tools = null;
             for (int i = leases.Count - 1; i >= 0; i--) leases[i].Dispose();
             leases.Clear();
-            if (root != null) Destroy(root.gameObject);
+            if (window != null)
+            {
+                var closing = window; window = null;
+                closing.onClose = null; closing.Close();
+            }
+            else if (root != null) Destroy(root.gameObject);
             if (entry != null) entry.gameObject.SetActive(true);
             root = null;
         }
@@ -148,6 +171,8 @@ namespace ProbablyStolen_FlatStorage
 
         private float ViewWidth => viewport.rectTransform.rect.width;
         private float ViewHeight => viewport.rectTransform.rect.height;
+        internal Box ViewBounds => new Box(-state.PanX / state.Zoom, -state.PanY / state.Zoom,
+            ViewWidth / state.Zoom, ViewHeight / state.Zoom);
 
         private void Resize()
         {
@@ -155,18 +180,37 @@ namespace ProbablyStolen_FlatStorage
             var parent = RenderHandler.current.windowRoot.rectTransform;
             Vector2 top = parent.InverseTransformPoint(new Vector3(0, screenHeight));
             Vector2 bottom = parent.InverseTransformPoint(new Vector3(screenWidth, 0));
-            float left = top.x - parent.rect.xMin, topOffset = parent.rect.yMax - top.y;
-            NativeAccess.Place(entry, bottom.x - parent.rect.xMin - 70, topOffset + 4, 62, 18);
+            float topOffset = parent.rect.yMax - top.y;
+            NativeAccess.Place(entry, bottom.x - parent.rect.xMin - 86, topOffset + 4, 78, 18);
+            nativeScale = parent.lossyScale;
             if (!IsOpen) return;
             arrangementChanges.Request();
-            float width = bottom.x - top.x, height = top.y - bottom.y;
-            NativeAccess.Place(root, left, topOffset, width, height);
-            NativeAccess.Place(toolbar, 0, Math.Max(0, height - 24), width, 24);
-            NativeAccess.Place(status, 360, 0, Math.Max(1, width - 364), 24);
-            NativeAccess.Place(viewport, 0, 0, width, Math.Max(1, height - 24));
+            FlatUI.FitScreen(window);
+            var host = window.ContentRoot;
+            float sx = nativeScale.x / host.lossyScale.x, sy = nativeScale.y / host.lossyScale.y;
+            root.rectTransform.localScale = new Vector3(sx, sy, 1);
+            float width = host.rect.width / sx, height = host.rect.height / sy;
+            NativeAccess.Place(root, 0, 0, width, height);
+            float searchHeight = tools.Layout(width);
+            NativeAccess.Place(searchbar, 0, 0, width, searchHeight);
+            float x = 4, y = 3;
+            foreach (var button in toolbarButtons)
+            {
+                float w = button.rectTransform.sizeDelta.x;
+                if (x + w > width - 4 && x > 4) { x = 4; y += 22; }
+                NativeAccess.Place(button, x, y, w, 18); x += w + 4;
+            }
+            float toolbarHeight = y + 38;
+            NativeAccess.Place(toolbar, 0, Math.Max(searchHeight, height - toolbarHeight), width, toolbarHeight);
+            NativeAccess.Place(status, 4, y + 20, Math.Max(1, width - 8), 16);
+            NativeAccess.Place(viewport, 0, searchHeight, width, Math.Max(1, height - toolbarHeight - searchHeight));
+            tools.ResizeDialogs(ViewWidth, ViewHeight);
+            viewDirty = true;
         }
 
         internal bool PointerInViewport => IsOpen && RectTransformUtility.RectangleContainsScreenPoint(viewport.rectTransform, Input.mousePosition);
+        internal bool OwnsInventoryPointer => PointerInViewport && tools != null && !tools.HasDialog &&
+            !tools.PickingTarget && !StoreUIManager.IsAnyTyping() && OwnsPointer();
         internal bool OwnsPointer()
         {
             if (!IsOpen || EventSystem.current == null) return false;
@@ -197,7 +241,7 @@ namespace ProbablyStolen_FlatStorage
 
         internal void BeginGroupDrag(WindowLease group)
         {
-            if (state.AutoArrange || Panning || IsItemDragging) return;
+            if (state.AutoArrange || Panning || IsItemDragging || tools.PickingTarget || tools.HasDialog) return;
             moving = group;
             lastPointer = Pointer();
             group.Group.rectTransform.SetAsLastSibling();
@@ -206,37 +250,36 @@ namespace ProbablyStolen_FlatStorage
         internal static bool IsItemDragging => (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem) ||
             (ItemMultiSelectHandler.current != null && ItemMultiSelectHandler.current.IsGroupDragging);
 
-        private void Update()
+        private void Update() => Run(UpdateFrame);
+
+        private void UpdateFrame()
         {
             if (RenderHandler.current == null || entry == null) { Remove(); return; }
-            if (screenWidth != Screen.width || screenHeight != Screen.height) Resize();
+            if (screenWidth != Screen.width || screenHeight != Screen.height || nativeScale != RenderHandler.current.windowRoot.rectTransform.lossyScale) Resize();
             if (!StoreUIManager.IsAnyTyping() && !KeyBindHelper.SuppressHotkeys && Input.GetKeyDown(ModEntry.Instance.Shortcut.Value)) Toggle();
             if (!IsOpen) return;
             if (PlayerStore.Instance == null || scene != StorageDiscovery.SceneKey || saveIdentity != PlayerStore.Instance.runID + ":" + PlayerStore.Instance.saveSlotId)
-            { CloseWithoutSave(); return; }
+            { Close(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && !StoreUIManager.IsAnyTyping())
             {
                 if (NegociationUIManager.Instance != null && NegociationUIManager.Instance.IsOpen && !IsItemDragging)
                     return;
                 EscapeFrame = Time.frameCount;
+                if (tools.Escape()) return;
                 if (IsItemDragging) { NativeAccess.CancelDrag(); return; }
                 Close(); return;
             }
-            try { UpdateCanvas(); }
-            catch (Exception error)
-            {
-                ReportFailure(error);
-                throw;
-            }
+            UpdateCanvas();
         }
 
         private void UpdateCanvas()
         {
             Vector2 pointer = Pointer();
+            tools.Update();
             if (Input.GetMouseButtonDown(1) && !IsItemDragging && !MovingGroup && PointerOnBlank()) RightPanning = true;
             bool panKey = (RightPanning && Input.GetMouseButton(1)) || Input.GetMouseButton(2) ||
                 (Input.GetKey(KeyCode.Space) && Input.GetMouseButton(0) && !StoreUIManager.IsAnyTyping());
-            bool canPan = PointerInViewport && OwnsPointer();
+            bool canPan = PointerInViewport && OwnsPointer() && !tools.PickingTarget && !tools.HasDialog;
             if (panKey && !Panning && canPan) { Panning = true; moving = null; lastPointer = pointer; }
             if (Panning)
             {
@@ -251,6 +294,7 @@ namespace ProbablyStolen_FlatStorage
                     var delta = (pointer - lastPointer) / state.Zoom;
                     moving.Position.X += delta.x; moving.Position.Y += delta.y;
                     NativeAccess.Place(moving.Group, moving.Position.X, moving.Position.Y, moving.Width, moving.Height);
+                    if (delta != Vector2.zero) viewDirty = true;
                 }
             }
             lastPointer = pointer;
@@ -261,13 +305,15 @@ namespace ProbablyStolen_FlatStorage
                 const float edge = 18;
                 float dx = pointer.x < edge ? edge - pointer.x : pointer.x > ViewWidth - edge ? ViewWidth - edge - pointer.x : 0;
                 float dy = pointer.y < edge ? edge - pointer.y : pointer.y > ViewHeight - edge ? ViewHeight - edge - pointer.y : 0;
-                state.PanX += dx * Time.unscaledDeltaTime * 12;
-                state.PanY += dy * Time.unscaledDeltaTime * 12;
+                state.PanX += dx * Time.unscaledDeltaTime * ModSettings.EdgePanSpeed;
+                state.PanY += dy * Time.unscaledDeltaTime * ModSettings.EdgePanSpeed;
             }
             if (Time.unscaledTime >= nextRefresh)
-            { nextRefresh = Time.unscaledTime + .25f; RefreshSources(); }
+            { nextRefresh = Time.unscaledTime + ModSettings.RefreshInterval; RefreshSources(); }
             if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging, Panning)) ArrangeLayout(false);
             Apply();
+            UpdateStatus();
+            if (IsItemDragging) UpdateDrag();
         }
 
         private void RefreshSources()
@@ -281,6 +327,7 @@ namespace ProbablyStolen_FlatStorage
                     NativeAccess.CancelDrag();
                     if (moving == lease) moving = null;
                     lease.Dispose(); leases.Remove(lease);
+                    viewDirty = true;
                 }
                 else lease.Source = source;
             }
@@ -294,20 +341,42 @@ namespace ProbablyStolen_FlatStorage
                     state.Groups.Add(position);
                 }
                 leases.Add(new WindowLease(source, content, position));
+                viewDirty = true;
             }
-            foreach (var lease in leases) lease.Refresh();
+            foreach (var lease in leases)
+            {
+                float width = lease.Width, height = lease.Height;
+                lease.Refresh();
+                if (width != lease.Width || height != lease.Height) viewDirty = true;
+            }
             arrangementChanges.Observe(leases.Select(l => new ArrangementLocation(l.Source.Id, l.Source.ParentId,
                 l.Source.Owner?.parentInventory, l.Source.Owner?.modifiedShape.minX ?? 0,
                 l.Source.Owner?.modifiedShape.minY ?? 0, l.Width, l.Height)));
+            tools.Refresh(leases);
         }
 
         private void Apply()
         {
+            if (!viewDirty && appliedX == state.PanX && appliedY == state.PanY && appliedZoom == state.Zoom &&
+                appliedWidth == ViewWidth && appliedHeight == ViewHeight) return;
+            viewDirty = false;
+            appliedX = state.PanX; appliedY = state.PanY; appliedZoom = state.Zoom;
+            appliedWidth = ViewWidth; appliedHeight = ViewHeight;
             content.rectTransform.localScale = new Vector3(state.Zoom, state.Zoom, 1);
             content.rectTransform.anchoredPosition = new Vector2(state.PanX, -state.PanY);
-            var view = new Box(-state.PanX / state.Zoom, -state.PanY / state.Zoom, ViewWidth / state.Zoom, ViewHeight / state.Zoom);
+            var view = ViewBounds;
             foreach (var lease in leases) lease.Cull(view);
-            status.text.text = Time.unscaledTime < noticeUntil ? notice : $"{Mathf.RoundToInt(state.Zoom * 100)}%   {leases.Count} 个分组";
+            tools.UpdateView(view);
+        }
+
+        private void UpdateStatus()
+        {
+            string value = Time.unscaledTime < noticeUntil ? notice : ModText.Get("ui.status", Mathf.RoundToInt(state.Zoom * 100), leases.Count);
+            if (status.text.text != value) status.text.text = value;
+        }
+
+        private void UpdateDrag()
+        {
             var item = ItemMouseDragHandler.current?.GetCurrentItem() as GameItemElement;
             if (item != null && ItemMouseDragHandler.current.IsDraggingItem && !item.IsDestroyed() &&
                 item.fakeMiddle.parent == RenderHandler.current.overlayRoot)
@@ -320,6 +389,48 @@ namespace ProbablyStolen_FlatStorage
                 item.SetCenteredPosition(center.Item1, center.Item2);
             }
             NativeAccess.RefreshDragTarget();
+        }
+
+        internal void Focus(float x, float y)
+        {
+            state.PanX = ViewWidth / 2 - x * state.Zoom;
+            state.PanY = ViewHeight / 2 - y * state.Zoom;
+            Apply(); Save();
+        }
+
+        internal void Focus(Box bounds) => Focus(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+
+        internal void Focus(CatalogItem entry)
+        {
+            var lease = leases.FirstOrDefault(l => l.Source.Id == entry.Source.Id);
+            if (lease == null || entry.Item.IsDestroyed()) return;
+            Focus(lease.Bounds);
+            if (entry.Item.parentInventory is GameGridScrollableInventory scrollable)
+            {
+                int range = scrollable.GetMinVisibleHeight() - scrollable.GetVisibleHeight();
+                if (range > 0)
+                {
+                    float center = entry.Item.modifiedShape.minY + entry.Item.modifiedShape.globalHeight / 2f;
+                    scrollable.SetScroll((center - scrollable.GetVisibleHeight() / 2f) / range);
+                }
+            }
+            var rect = entry.Item.middle.rectTransform;
+            Vector2 point = content.rectTransform.InverseTransformPoint(rect.TransformPoint(rect.rect.center));
+            Focus(point.x, -point.y);
+        }
+
+        internal TreeNodeRender CreatePointerCover()
+        {
+            var cover = FlatUI.Panel(viewport, "Choose destination", new Color(.2f, .5f, .7f, .06f));
+            NativeAccess.Place(cover, 0, 0, ViewWidth, ViewHeight);
+            return cover;
+        }
+
+        internal void RefreshNow()
+        {
+            RefreshSources();
+            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging, Panning)) ArrangeLayout(false);
+            Apply();
         }
 
         private void Fit()
@@ -342,6 +453,8 @@ namespace ProbablyStolen_FlatStorage
             for (int i = 0; i < leases.Count; i++)
             { leases[i].Position.X = boxes[i].X; leases[i].Position.Y = boxes[i].Y; leases[i].Refresh(); }
             arrangementChanges.Applied();
+            viewDirty = true;
+            tools.Refresh(leases);
             if (fit) Fit();
             else { Apply(); Save(); }
         }
@@ -349,7 +462,7 @@ namespace ProbablyStolen_FlatStorage
         private void ToggleAutomatic()
         {
             state.AutoArrange = !state.AutoArrange;
-            automaticLabel.text.text = state.AutoArrange ? "自动排列 开" : "自动排列 关";
+            automaticLabel.text.text = ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off");
             moving = null;
             if (state.AutoArrange)
             {
@@ -362,10 +475,13 @@ namespace ProbablyStolen_FlatStorage
 
         private void OpenTrading()
         {
-            if (ModHelper.IsOutsideStore()) { Notice("交易页面用于店内柜台交易。"); return; }
+            if (ModHelper.IsOutsideStore()) { Notice(ModText.Get("ui.trading_outside")); return; }
             var trading = NegociationUIManager.Instance;
             if (trading == null || trading.uiObject == null)
-                throw new InvalidOperationException("游戏交易页面尚未初始化。");
+            {
+                string message = ModText.Get("ui.trading_unavailable");
+                ModEntry.Instance.Log.Warning(message); Notice(message); return;
+            }
             NativeAccess.CancelDrag();
             moving = null; Panning = false; RightPanning = false;
             Save();

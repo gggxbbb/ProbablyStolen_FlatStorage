@@ -19,8 +19,9 @@ namespace ProbablyStolen_FlatStorage
         internal static void Check()
         {
             NativeLayoutSizes.Check();
+            NativeTabsAccess.Check();
             foreach (var member in new MemberInfo[] { CanMove, TabWidth, TabHeight, TabStrip, TabUnderline, Abort, RefreshDrag })
-                if (member == null) throw new MissingMemberException("Flat Storage 与当前游戏接口不兼容。");
+                if (member == null) throw new MissingMemberException("Flat Storage is incompatible with the current game API.");
         }
 
         internal static void CancelDrag()
@@ -70,8 +71,10 @@ namespace ProbablyStolen_FlatStorage
         private readonly Dictionary<MachineryTabs, TabSnapshot> selections = new Dictionary<MachineryTabs, TabSnapshot>();
         private readonly CanvasGroup visibility;
         private readonly NativeLayoutSizes layoutSizes = new NativeLayoutSizes();
+        private float nextHiddenRefresh;
+        internal bool IsVisibleInViewport { get; private set; } = true;
         internal bool OriginallyVisible => visible;
-        public float Width => Math.Max(Math.Max(120, Source.Window.widthPixels), Label.text.preferredWidth + 10);
+        public float Width => Math.Max(1, Source.Window.widthPixels);
         public float Height => Source.Window.heightPixels + 20;
         public Box Bounds => new Box(Position.X, Position.Y, Width, Height);
 
@@ -87,10 +90,12 @@ namespace ProbablyStolen_FlatStorage
             originalWidth = window.widthPixels; originalHeight = window.heightPixels;
             registered = WindowsHandler.current.visibleWindows.Contains(window);
             closeCallback = window.closeCallback;
-            CaptureLayoutSizes();
+            CaptureLayoutSizes(window.handler.GetComponentsInChildren<TreeNodeRender>(true));
             Group = FlatUI.Panel(canvas, "Storage Group", new Color(.10f, .12f, .14f, .96f));
             Header = FlatUI.Panel(Group, "Group Header", new Color(.20f, .25f, .29f));
             Label = FlatUI.Text(Header, source.Label, 7);
+            Label.text.enableWordWrapping = false;
+            Label.text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
             Header.InitEventHandler();
             Header.eventHandler.mouseDownFunc.Add(e =>
             {
@@ -120,8 +125,16 @@ namespace ProbablyStolen_FlatStorage
 
         public void Refresh()
         {
+            if (!IsVisibleInViewport)
+            {
+                if (Time.unscaledTime < nextHiddenRefresh) return;
+                nextHiddenRefresh = Time.unscaledTime + 1;
+                RefreshPlacement();
+                return;
+            }
             var window = Source.Window;
-            CaptureLayoutSizes();
+            var nodes = window.handler.GetComponentsInChildren<TreeNodeRender>(true);
+            CaptureLayoutSizes(nodes);
             foreach (var tabs in new List<MachineryTabs>(selections.Keys))
             {
                 if (tabs.handler != null && tabs.handler.transform.IsChildOf(window.handler.transform)) continue;
@@ -134,7 +147,7 @@ namespace ProbablyStolen_FlatStorage
                 }
                 selections.Remove(tabs);
             }
-            foreach (var node in window.handler.GetComponentsInChildren<TreeNodeRender>(true))
+            foreach (var node in nodes)
             {
                 if (node.element is MachineryTabs tabs && !selections.ContainsKey(tabs))
                 {
@@ -142,17 +155,29 @@ namespace ProbablyStolen_FlatStorage
                     Tabs.Add(tabs, this);
                 }
             }
+            foreach (var pair in selections) pair.Value.Capture(pair.Key);
             window.Validate();
+            RefreshPlacement();
+        }
+
+        internal void CaptureTabState(MachineryTabs tabs) => selections[tabs].Capture(tabs);
+
+        private void RefreshPlacement()
+        {
+            var window = Source.Window;
             Label.text.text = Source.Label;
             NativeAccess.Place(window.handler, 0, 20, window.widthPixels, window.heightPixels);
             NativeAccess.Place(Group, Position.X, Position.Y, Width, Height);
             NativeAccess.Place(Header, 0, 0, Width, 18);
-            NativeAccess.Place(Label, 5, 0, Width - 10, 18);
+            NativeAccess.Place(Label, 5, 0, Math.Max(0, Width - 10), 18);
         }
 
         public void Cull(Box viewport)
         {
             bool show = Bounds.Intersects(viewport);
+            bool waking = show && !IsVisibleInViewport;
+            IsVisibleInViewport = show;
+            if (waking) Refresh();
             visibility.alpha = show ? 1 : 0;
             visibility.blocksRaycasts = show;
             visibility.interactable = show;
@@ -191,10 +216,10 @@ namespace ProbablyStolen_FlatStorage
             rect.SetSiblingIndex(sibling);
         }
 
-        private void CaptureLayoutSizes()
+        private void CaptureLayoutSizes(TreeNodeRender[] nodes)
         {
             layoutSizes.Capture(Source.Window);
-            foreach (var node in Source.Window.handler.GetComponentsInChildren<TreeNodeRender>(true))
+            foreach (var node in nodes)
                 layoutSizes.Capture(node.element);
         }
 
@@ -203,13 +228,26 @@ namespace ProbablyStolen_FlatStorage
             private readonly int selected;
             private readonly Vector2 size;
             private readonly Dictionary<GameObject, bool> stripVisibility = new Dictionary<GameObject, bool>();
+            private readonly Dictionary<TreeNodeRender, (TMPro.TextOverflowModes Overflow, bool Wrapping)> textStyles =
+                new Dictionary<TreeNodeRender, (TMPro.TextOverflowModes, bool)>();
 
             public TabSnapshot(MachineryTabs tabs)
             {
                 selected = tabs.selected;
                 size = tabs.rectTransform.sizeDelta;
+                Capture(tabs);
+            }
+
+            public void Capture(MachineryTabs tabs)
+            {
                 var strip = (TreeNodeRender)NativeAccess.TabStrip.GetValue(tabs);
-                foreach (Transform child in strip.transform) stripVisibility.Add(child.gameObject, child.gameObject.activeSelf);
+                foreach (Transform child in strip.transform)
+                    if (!stripVisibility.ContainsKey(child.gameObject)) stripVisibility.Add(child.gameObject, child.gameObject.activeSelf);
+                for (int i = 0; i < tabs.count; i++)
+                {
+                    var text = NativeTabsAccess.Get(tabs, i).Text;
+                    if (!textStyles.ContainsKey(text)) textStyles.Add(text, (text.text.overflowMode, text.text.enableWordWrapping));
+                }
             }
 
             public void Restore(MachineryTabs tabs)
@@ -220,7 +258,15 @@ namespace ProbablyStolen_FlatStorage
                 foreach (Transform child in strip.transform)
                     child.gameObject.SetActive(!stripVisibility.TryGetValue(child.gameObject, out bool active) || active);
                 for (int i = 0; i < tabs.count; i++)
-                    strip.transform.GetChild(i * 2 + 1).GetComponent<TreeNodeRender>().text.text = tabs.GetCaption(i) ?? "";
+                {
+                    var text = NativeTabsAccess.Get(tabs, i).Text;
+                    text.text.text = tabs.GetCaption(i) ?? "";
+                    if (textStyles.TryGetValue(text, out var style))
+                    {
+                        text.text.overflowMode = style.Overflow;
+                        text.text.enableWordWrapping = style.Wrapping;
+                    }
+                }
             }
         }
     }

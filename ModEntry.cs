@@ -19,20 +19,24 @@ namespace ProbablyStolen_FlatStorage
         public void OnEnable()
         {
             var config = ModHelper.GetConfig(Id);
-            Shortcut = config.DefineEnum("shortcut", KeyCode.Backslash, "Flat Storage", () => "全局仓储快捷键");
+            Shortcut = config.DefineEnum("shortcut", KeyCode.Backslash, "Flat Storage", () => ModText.Get("settings.shortcut"));
             if (Shortcut.Value == KeyCode.F8) Shortcut.Set(KeyCode.Backslash);
-            ModHelper.AddGameOptionSection(Id, "storage", () => "扁平存储");
-            ModHelper.AddGameOptionKeyBind(Id, "storage", "shortcut", () => "打开全局仓储",
+            ModHelper.AddGameOptionSection(Id, "storage", () => ModText.Get("app.name"));
+            ModHelper.AddGameOptionKeyBind(Id, "storage", "shortcut", () => ModText.Get("settings.open"),
                 () => Shortcut.Value, key => Shortcut.Set(key));
+            ModSettings.Register(config);
+            ModHook.OnGameLoadedInit += Loading;
             ModHook.OnGameLoadedLate += Loaded;
+            ModHook.OnAfterhourArriveEarly += Leaving;
             ModHook.OnAfterhourLeaveEarly += Leaving;
             ModHook.OnGoingSleepEarly += Closing;
-            Log.Log("Flat Storage 已启用，默认快捷键为反斜杠键。");
         }
 
         public void OnDisable()
         {
+            ModHook.OnGameLoadedInit -= Loading;
             ModHook.OnGameLoadedLate -= Loaded;
+            ModHook.OnAfterhourArriveEarly -= Leaving;
             ModHook.OnAfterhourLeaveEarly -= Leaving;
             ModHook.OnGoingSleepEarly -= Closing;
             FlatStorageController.Remove();
@@ -42,9 +46,12 @@ namespace ProbablyStolen_FlatStorage
         private static void Loaded()
         {
             FlatStorageController.Remove();
+            SaveDataMaintenance.Loaded();
             new GameObject("Flat Storage").AddComponent<FlatStorageController>();
+            Instance.Log.Log(ModText.Get("app.enabled", Instance.Shortcut.Value));
         }
 
+        private static void Loading() => FlatStorageController.Current?.CloseWithoutSave();
         private static void Leaving(string location) => Closing();
         private static void Closing() => FlatStorageController.Current?.Close();
     }

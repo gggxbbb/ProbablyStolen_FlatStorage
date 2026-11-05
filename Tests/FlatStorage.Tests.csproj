@@ -12,6 +12,8 @@
     <Compile Include="..\RenderingTransfer.cs" Link="RenderingTransfer.cs" />
     <Compile Include="..\StorageArrangement.cs" Link="StorageArrangement.cs" />
     <Compile Include="..\ArrangementChanges.cs" Link="ArrangementChanges.cs" />
+    <Compile Include="..\SaveDataPruning.cs" Link="SaveDataPruning.cs" />
+    <Compile Include="..\StorageSearch.cs" Link="StorageSearch.cs" />
     <Reference Include="Newtonsoft.Json;Unity.Burst.Cecil">
       <HintPath>$(ManagedDir)\%(Identity).dll</HintPath>
     </Reference>

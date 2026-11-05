@@ -57,9 +57,7 @@ internal static class ArrangementChecks
             Check(result[i].X == b.X && result[i].Y == b.Y, "输入顺序变化后排列保持一致");
         }
         double area = Bounds(result).Width * Bounds(result).Height;
-        double shelf = Bounds(CanvasMath.Arrange(groups.Select(g => g.Size).ToList(), 1000)).Width *
-            Bounds(CanvasMath.Arrange(groups.Select(g => g.Size).ToList(), 1000)).Height;
-        Console.WriteLine($"  包围面积 {area:F0}，行排列参考面积 {shelf:F0}。");
+        Console.WriteLine($"  包围面积 {area:F0}。");
     }
 
     internal static void Aspect()

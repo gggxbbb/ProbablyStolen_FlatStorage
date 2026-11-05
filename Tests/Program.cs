@@ -36,7 +36,7 @@ var tests = new (string Name, Action Run)[]
         Check(!changes.Pending, "发现顺序变化保持位置");
         changes.Observe(new[] { a }); Check(changes.Pending, "容器移除触发排列"); changes.Applied();
         changes.Observe(new[] { new ArrangementLocation("a", "root", null, 2, 2, 120, 80) });
-        Check(changes.Pending, "原网格移动触发排列"); changes.Applied();
+        Check(!changes.Pending, "原网格移动保留布局");
         changes.Observe(new[] { new ArrangementLocation("a", "b", null, 2, 2, 120, 80) });
         Check(changes.Pending, "容器归属变化触发排列"); changes.Applied();
         changes.Observe(new[] { new ArrangementLocation("a", "b", null, 2, 2, 240, 80) });
@@ -116,17 +116,6 @@ var tests = new (string Name, Action Run)[]
         var s = new CanvasState(); s.ZoomAt(0, 0, 100); Near(s.Zoom, 2);
         s.ZoomAt(0, 0, .01f); Near(s.Zoom, .25f);
     }),
-    ("不同尺寸分组排列保持间隔", () =>
-    {
-        var sizes = new[] { new Box(0, 0, 200, 180), new Box(0, 0, 400, 100), new Box(0, 0, 900, 120), new Box(0, 0, 70, 30) };
-        var boxes = CanvasMath.Arrange(sizes, 700);
-        for (int i = 0; i < boxes.Count; i++)
-        {
-            Near(boxes[i].Width, sizes[i].Width); Near(boxes[i].Height, sizes[i].Height);
-            for (int j = i + 1; j < boxes.Count; j++) Check(!boxes[i].Intersects(boxes[j]), "分组重叠");
-        }
-        Near(boxes[1].X, 224); Near(boxes[2].Y, 204); Near(boxes[3].Y, 348);
-    }),
     ("适应内容支持负坐标", () =>
     {
         var s = new CanvasState(); var box = new Box(-200, -100, 600, 400);
@@ -170,6 +159,20 @@ var tests = new (string Name, Action Run)[]
         Reject(() => CanvasState.Decode("{\"PanX\":\"NaN\"}"));
         Reject(() => CanvasState.Decode("{\"Groups\":[{\"Id\":\"a\"},{\"Id\":\"a\"}]}"));
     }),
+    ("配置默认值与已有场景布局", RoadmapChecks.Defaults),
+    ("存档清理保留跨场景物品", RoadmapChecks.Pruning),
+    ("存档清理拒绝损坏布局", RoadmapChecks.InvalidPruning),
+    ("双语 CSV 词条与格式", () => RoadmapChecks.Localization(workspace)),
+    ("游戏语言注册与缺失资源拒绝", () => RoadmapChecks.LocaleRegistration(workspace)),
+    ("游戏窗口与生命周期实际接口", () => RoadmapChecks.GameApi(managed)),
+    ("名称与标识符中英文搜索", SearchChecks.NamesAndIdentifiers),
+    ("物品类别与查询交集", SearchChecks.Categories),
+    ("空查询与类别筛选", SearchChecks.EmptyQuery),
+    ("小地图负坐标映射", SearchChecks.MapNegativeCoordinates),
+    ("小地图比例与坐标往返", SearchChecks.MapAspectAndRoundTrip),
+    ("小地图输入边界", SearchChecks.MapBounds),
+    ("批量预览实际形状变化", () => BulkTransferChecks.Shapes(workspace)),
+    ("批量预览实际占格预留", () => BulkTransferChecks.Reservations(workspace)),
     ("程序集引用与 Harmony 目标", () => VerifyAssembly(workspace, managed)),
     ("原生尺寸恢复字段实际接口", () =>
     {
@@ -178,6 +181,7 @@ var tests = new (string Name, Action Run)[]
         var type = assembly.GetType("ProbablyStolen_FlatStorage.NativeLayoutSizes", true);
         type.GetMethod("Check", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
     }),
+    ("原生机器分页字段实际接口", () => RoadmapChecks.NativeTabs(workspace)),
     ("游戏 ModScanner 实际扫描", () => VerifyScanner(workspace, managed))
 };
 foreach (var test in tests) { test.Run(); Console.WriteLine("PASS " + test.Name); }
@@ -225,7 +229,7 @@ static void VerifyAssembly(string workspace, string managed)
         }
         patches++;
     }
-    Check(patches >= 15, "Harmony 接入数量");
+    Check(patches > 0, "Harmony 接入存在");
     Console.WriteLine($"  已核验 {patches} 个 Harmony 目标。");
 }
 

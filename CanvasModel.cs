@@ -36,6 +36,14 @@ namespace ProbablyStolen_FlatStorage
             return state;
         }
 
+        public static CanvasState Create(string json, float defaultZoom, bool defaultAutoArrange)
+        {
+            if (json != null) return Decode(json);
+            var state = new CanvasState { Zoom = defaultZoom, AutoArrange = defaultAutoArrange };
+            state.Validate();
+            return state;
+        }
+
         public void Validate()
         {
             if (Version != 1 || !CanvasMath.Finite(Zoom) || Zoom < .25f || Zoom > 2 ||
@@ -65,20 +73,6 @@ namespace ProbablyStolen_FlatStorage
     public static class CanvasMath
     {
         public static bool Finite(float n) => !float.IsNaN(n) && !float.IsInfinity(n);
-
-        public static List<Box> Arrange(IReadOnlyList<Box> sizes, float rowWidth, float gap = 24)
-        {
-            var result = new List<Box>();
-            float x = 0, y = 0, rowHeight = 0;
-            foreach (var size in sizes)
-            {
-                if (x > 0 && x + size.Width > rowWidth) { x = 0; y += rowHeight + gap; rowHeight = 0; }
-                result.Add(new Box(x, y, size.Width, size.Height));
-                x += size.Width + gap;
-                rowHeight = Math.Max(rowHeight, size.Height);
-            }
-            return result;
-        }
 
         public static void Fit(CanvasState state, IReadOnlyList<Box> boxes, float width, float height)
         {

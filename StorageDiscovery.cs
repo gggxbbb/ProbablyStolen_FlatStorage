@@ -40,11 +40,11 @@ namespace ProbablyStolen_FlatStorage
                     string parentLabel = parentItem == null ? path : StorageLabels.Name(GeneralHelper.GetCustomName(parentItem), parentItem.GetDisplayName());
                     if (windows.Add(content)) result.Add(new StorageSource
                     {
-                        Id = "item:" + item.GetUniqueID(), Window = content, Owner = item,
-                        ParentId = parentItem == null ? parentId : "item:" + parentItem.GetUniqueID(),
+                        Id = "item:" + OpenedContainers.PersistentId(item), Window = content, Owner = item,
+                        ParentId = parentItem == null ? parentId : "item:" + OpenedContainers.PersistentId(parentItem),
                         OwnLabel = name, Label = StorageLabels.Title(parentLabel, name, item.GetDisplayName())
                     });
-                    Visit(content, name, "item:" + item.GetUniqueID());
+                    Visit(content, name, "item:" + OpenedContainers.PersistentId(item));
                     return;
                 }
                 if (node.children == null) return;
@@ -61,27 +61,27 @@ namespace ProbablyStolen_FlatStorage
 
             if (ModHelper.IsOutsideStore())
             {
-                Root("afterhour", "随身与当前地点", entry.afterhourWindow);
+                Root("afterhour", ModText.Get("storage.afterhour"), entry.afterhourWindow);
                 if (entry.bazarLeftInvWindow != null && entry.bazarLeftInvWindow.handler.gameObject.activeInHierarchy)
-                    Root("bazar", "当前地点仓储", entry.bazarLeftInvWindow);
+                    Root("bazar", ModText.Get("storage.bazar"), entry.bazarLeftInvWindow);
             }
             else
             {
-                Root("main", "店内仓储", entry.invWindow);
-                Root("back", "柜台仓储", entry.backInvWindow);
-                Root("front", "交易区域", entry.frontInvWindow);
-                Root("showcase", "展示柜", entry.showcaseWindow);
-                Root("documents", "文件", entry.docInvWindow);
-                Root("hidden", "隐蔽仓储", entry.hiddenWindow);
-                Root("cassette", "播放器", entry.cassettePlayerWindow);
-                if (entry.vendingMachineElement.childItems.Count > 0) Root("vending", "售货机", entry.vendingMachineWindow);
-                if (entry.vendingFountainElement.childItems.Count > 0) Root("fountain", "饮料机", entry.vendingFountainWindow);
-                if (EmporiumEntry.IsWaterTapUnlocked()) Root("faucet", "水龙头", entry.faucetWindow);
-                Root("drain", "排水口", entry.drainInvWindow);
-                Root("trash", "废弃物", entry.trashInvWindow);
+                Root("main", ModText.Get("storage.main"), entry.invWindow);
+                Root("back", ModText.Get("storage.back"), entry.backInvWindow);
+                Root("front", ModText.Get("storage.front"), entry.frontInvWindow);
+                Root("showcase", ModText.Get("storage.showcase"), entry.showcaseWindow);
+                Root("documents", ModText.Get("storage.documents"), entry.docInvWindow);
+                Root("hidden", ModText.Get("storage.hidden"), entry.hiddenWindow);
+                Root("cassette", ModText.Get("storage.cassette"), entry.cassettePlayerWindow);
+                if (entry.vendingMachineElement.childItems.Count > 0) Root("vending", ModText.Get("storage.vending"), entry.vendingMachineWindow);
+                if (entry.vendingFountainElement.childItems.Count > 0) Root("fountain", ModText.Get("storage.fountain"), entry.vendingFountainWindow);
+                if (EmporiumEntry.IsWaterTapUnlocked()) Root("faucet", ModText.Get("storage.faucet"), entry.faucetWindow);
+                Root("drain", ModText.Get("storage.drain"), entry.drainInvWindow);
+                Root("trash", ModText.Get("storage.trash"), entry.trashInvWindow);
                 if (entry.hirelingWindow.handler.gameObject.activeInHierarchy &&
                     (!WindowLease.Active.TryGetValue(entry.hirelingWindow, out var hired) || hired.OriginallyVisible))
-                    Root("hireling", "雇员仓储", entry.hirelingWindow);
+                    Root("hireling", ModText.Get("storage.hireling"), entry.hirelingWindow);
             }
             // 当前场景另外打开的仓储通过真实显示节点补充。
             foreach (var window in WindowsHandler.current.visibleWindows.ToArray())

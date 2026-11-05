@@ -1,0 +1,23 @@
+[h1]Flat Storage[/h1]
+View opened, accessible containers, personal storage and machines from the current Probably Stolen scene on one canvas. Pan, zoom, drag items between containers, and use every unlocked page and native machine control.
+
+[h2]Controls[/h2]
+[list]
+[*]Press the backslash key or click the top-right button to open the canvas.
+[*]Use the mouse wheel to zoom. Pan with the middle button, the right button over empty space, or Space and the left button.
+[*]Search items by name or category. Matching items remain highlighted; press Enter to focus each match.
+[*]Choose a container in the group directory to focus its storage.
+[*]Review a bulk transfer before confirming. Each move uses the game's native placement checks.
+[*]Automatic arrangement keeps the counter central and groups similar contents and machines. Disable it to move groups manually.
+[*]Open the native trading panel above the canvas and use the game's trading controls.
+[/list]
+
+[h2]Settings and saves[/h2]
+Configure the shortcut, default zoom, refresh interval, edge-pan speed and automatic-arrangement default in the game options. Canvas and group positions are saved per game save and scene. The interface supports Simplified Chinese and English.
+
+Open containers through the native interface before using them here, and unlock locked containers first. Item transfers respect the game's ownership, shape, capacity, item-type and machine restrictions.
+
+Mod version: 1.3.0
+Supported game version: 100-Rev6
+Source and instructions: https://github.com/gggxbbb/ProbablyStolen_FlatStorage
+Code license: MIT

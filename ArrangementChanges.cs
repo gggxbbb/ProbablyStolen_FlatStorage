@@ -13,7 +13,7 @@ namespace ProbablyStolen_FlatStorage
         internal ArrangementLocation(string id, string parent, object inventory, int x, int y, float width, float height)
         { Id = id; Parent = parent; Inventory = inventory; X = x; Y = y; Width = width; Height = height; }
         public bool Equals(ArrangementLocation other) => Id == other.Id && Parent == other.Parent &&
-            ReferenceEquals(Inventory, other.Inventory) && X == other.X && Y == other.Y && Width == other.Width && Height == other.Height;
+            ReferenceEquals(Inventory, other.Inventory) && Width == other.Width && Height == other.Height;
     }
 
     internal sealed class ArrangementChanges

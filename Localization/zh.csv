@@ -1,0 +1,67 @@
+app.name,扁平存储
+app.enabled,扁平存储已启用。快捷键：{0}
+settings.shortcut,全局仓储快捷键
+settings.open,打开全局仓储
+settings.zoom,新场景默认缩放
+settings.refresh,仓储刷新间隔
+settings.edge,边缘平移速度
+settings.automatic,新场景自动排列
+settings.seconds,{0} 秒
+storage.afterhour,随身与当前地点
+storage.bazar,当前地点仓储
+storage.main,店内仓储
+storage.back,柜台仓储
+storage.front,交易区域
+storage.showcase,展示柜
+storage.documents,文件
+storage.hidden,隐蔽仓储
+storage.cassette,播放器
+storage.vending,售货机
+storage.fountain,饮料机
+storage.faucet,水龙头
+storage.drain,排水口
+storage.trash,废弃物
+storage.hireling,雇员仓储
+native.tabs_invalid,机器分页结构无效：{0}
+drop.rejected,目标位置不允许放置此物品，请检查空位、容量和机器限制。
+ui.title,扁平存储
+ui.fit,适应全部
+ui.arrange,重新排列
+ui.trading,交易页面
+ui.auto_on,自动排列 开
+ui.auto_off,自动排列 关
+ui.close,关闭
+ui.status,{0}%   {1} 个分组
+ui.error,画布操作已停止：{0}
+ui.trading_outside,交易页面用于店内柜台交易。
+ui.trading_unavailable,游戏交易页面尚未就绪。
+ui.manager_unavailable,游戏界面管理器尚未就绪。
+ui.search,搜索物品
+ui.category,全部类别
+ui.next,下一个
+ui.clear,清除
+ui.matches,{0} 件匹配物品
+ui.no_matches,没有匹配物品
+ui.navigate,容器目录
+ui.bulk,批量整理
+ui.pick_target,点击接收同类物品的目标网格
+ui.preview,整理预览
+ui.confirm,确认转移
+ui.cancel,取消
+ui.bulk_summary,可转移 {0} 件，受限制 {1} 件
+ui.bulk_target,目标：{0}
+ui.bulk_policy,按预览数量逐件转移；条件变化时停止，已完成的转移保留。
+ui.bulk_done,已转移 {0} 件
+ui.empty_groups,当前没有可访问容器
+ui.prefab_missing,游戏界面模板缺失：{0}
+ui.component_missing,游戏界面组件缺失：{0}
+ui.preview_changed,物品或目标已变化，请重新预览。
+bulk.preview_expired,物品或容器状态已变化，请重新预览。
+bulk.target_unavailable,目标页面当前不可接收物品。
+bulk.target_empty,请先在目标页面放入一件要归并的同类物品。
+bulk.restricted,物品受到锁定、固定、归属或嵌套限制。
+bulk.no_space,目标页面的可用空间或接收数量不足。
+bulk.partial,其中 {0} 件保留在原位。
+bulk.no_matches,其他已打开页面中没有同类物品。
+bulk.stopped,“{0}”的转移条件已变化，后续物品保留在原位。
+bulk.native_failure,原生转移失败：{0}；此前已移动 {1} 件，本次返回 {2}/{3} 件。

@@ -1,0 +1,67 @@
+app.name,Flat Storage
+app.enabled,Flat Storage enabled. Shortcut: {0}
+settings.shortcut,Global storage shortcut
+settings.open,Open global storage
+settings.zoom,Default zoom for new scenes
+settings.refresh,Storage refresh interval
+settings.edge,Edge pan speed
+settings.automatic,Auto arrange new scenes
+settings.seconds,{0} s
+storage.afterhour,Carried items and current location
+storage.bazar,Current location storage
+storage.main,Store storage
+storage.back,Counter storage
+storage.front,Trading area
+storage.showcase,Showcase
+storage.documents,Documents
+storage.hidden,Hidden storage
+storage.cassette,Player
+storage.vending,Vending machine
+storage.fountain,Drink dispenser
+storage.faucet,Water tap
+storage.drain,Drain
+storage.trash,Waste
+storage.hireling,Hireling storage
+native.tabs_invalid,Invalid machinery tab structure: {0}
+drop.rejected,"This item cannot be placed here. Check free space, capacity and machine restrictions."
+ui.title,Flat Storage
+ui.fit,Fit all
+ui.arrange,Arrange
+ui.trading,Trading
+ui.auto_on,Auto arrange: on
+ui.auto_off,Auto arrange: off
+ui.close,Close
+ui.status,{0}%   {1} groups
+ui.error,Canvas operation stopped: {0}
+ui.trading_outside,Trading is available at the shop counter.
+ui.trading_unavailable,The game trading panel is not ready.
+ui.manager_unavailable,The game UI manager is not ready.
+ui.search,Search items
+ui.category,All categories
+ui.next,Next
+ui.clear,Clear
+ui.matches,{0} matching items
+ui.no_matches,No matching items
+ui.navigate,Containers
+ui.bulk,Consolidate
+ui.pick_target,Click the destination grid for matching items
+ui.preview,Transfer preview
+ui.confirm,Confirm transfer
+ui.cancel,Cancel
+ui.bulk_summary,"{0} units ready, {1} units blocked"
+ui.bulk_target,Destination: {0}
+ui.bulk_policy,Transfer the previewed quantities in order. Stop if conditions change; completed transfers remain.
+ui.bulk_done,{0} units transferred
+ui.empty_groups,No accessible containers
+ui.prefab_missing,Missing game UI prefab: {0}
+ui.component_missing,Missing game UI component: {0}
+ui.preview_changed,Items or destination changed. Preview again.
+bulk.preview_expired,Items or containers changed. Preview again.
+bulk.target_unavailable,This page cannot currently receive items.
+bulk.target_empty,Place a sample item on the target page first.
+bulk.restricted,"Blocked by locking, pinning, ownership, or nesting rules."
+bulk.no_space,The target has insufficient space or receiving capacity.
+bulk.partial,{0} units will remain in place.
+bulk.no_matches,No matching items on other open pages.
+bulk.stopped,Transfer conditions changed for {0}. Remaining items stay in place.
+bulk.native_failure,"Native transfer failed for {0}; {1} units moved earlier, this operation returned {2}/{3}."

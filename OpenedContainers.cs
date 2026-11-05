@@ -26,7 +26,14 @@ namespace ProbablyStolen_FlatStorage
             if (PlayerStore.Instance == null || window.isLocked || !window.IsVisible() || WindowLease.Active.ContainsKey(window)) return;
             foreach (var item in window.parentItems)
                 if (item.contentWindow == window && GeneralHelper.IsItemOwned(item))
-                    ModHelper.SetModDataBool(ModEntry.Id, "opened:" + item.GetUniqueID(), true);
+                    ModHelper.SetModDataBool(ModEntry.Id, "opened:" + PersistentId(item), true);
+        }
+
+        internal static int PersistentId(GameItem item)
+        {
+            int id = item.GetUniqueID();
+            if (id <= 0) throw new System.InvalidOperationException("Invalid Flat Storage item identity: " + id);
+            return id;
         }
     }
 }

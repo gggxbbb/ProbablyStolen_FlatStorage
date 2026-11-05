@@ -28,7 +28,7 @@ namespace ProbablyStolen_FlatStorage
             foreach (var type in fields.Keys)
             {
                 if (fields[type].Any(f => f == null || f.FieldType != typeof(int)))
-                    throw new MissingMemberException("无法保存原生控件尺寸：" + type.Name);
+                    throw new MissingMemberException("Cannot preserve native control dimensions: " + type.Name);
             }
         }
 

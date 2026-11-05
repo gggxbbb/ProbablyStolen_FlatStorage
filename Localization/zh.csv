@@ -43,25 +43,26 @@ ui.clear,清除
 ui.matches,{0} 件匹配物品
 ui.no_matches,没有匹配物品
 ui.navigate,容器目录
-ui.bulk,批量整理
-ui.pick_target,点击接收同类物品的目标网格
-ui.preview,整理预览
+ui.store,自动收纳
+ui.minimap,小地图
+ui.store_preview,收纳预览
 ui.confirm,确认转移
 ui.cancel,取消
-ui.bulk_summary,可转移 {0} 件，受限制 {1} 件
-ui.bulk_target,目标：{0}
-ui.bulk_policy,按预览数量逐件转移；条件变化时停止，已完成的转移保留。
-ui.bulk_done,已转移 {0} 件
+ui.store_summary,可收纳 {0} 件，保留 {1} 件
+ui.store_policy,确认后逐件转移；条件变化时停止，已完成的转移保留。
+ui.store_destination,{0} · {1} 件 · 匹配度 {2}%
+ui.store_done,已收纳 {0} 件
 ui.empty_groups,当前没有可访问容器
 ui.prefab_missing,游戏界面模板缺失：{0}
 ui.component_missing,游戏界面组件缺失：{0}
-ui.preview_changed,物品或目标已变化，请重新预览。
-bulk.preview_expired,物品或容器状态已变化，请重新预览。
-bulk.target_unavailable,目标页面当前不可接收物品。
-bulk.target_empty,请先在目标页面放入一件要归并的同类物品。
+bulk.used,此收纳计划已使用，请重新预览。
+bulk.changed,物品、容器或交易状态已变化，请重新预览。
 bulk.restricted,物品受到锁定、固定、归属或嵌套限制。
-bulk.no_space,目标页面的可用空间或接收数量不足。
-bulk.partial,其中 {0} 件保留在原位。
-bulk.no_matches,其他已打开页面中没有同类物品。
 bulk.stopped,“{0}”的转移条件已变化，后续物品保留在原位。
 bulk.native_failure,原生转移失败：{0}；此前已移动 {1} 件，本次返回 {2}/{3} 件。
+auto.unavailable,请在店内完成加载后使用自动收纳。
+auto.no_sources,当前没有可访问的主柜子或桌面。
+auto.no_items,主柜子和桌面没有可收纳的自有散放物品。
+auto.client_present,顾客在场，桌面物品及其中的容器保持原状。
+auto.no_match,没有内容类别匹配的普通容器。
+auto.capacity,匹配容器容量不足，{0} 件物品保留原处。

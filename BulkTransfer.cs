@@ -1,27 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace ProbablyStolen_FlatStorage
 {
-    internal sealed class BulkTransferRow
-    {
-        public GameItem Item { get; }
-        public string Name { get; }
-        public int Units { get; }
-        public int PlannedUnits { get; internal set; }
-        public bool CanMove => PlannedUnits > 0;
-        public string Reason { get; internal set; }
-
-        internal BulkTransferRow(GameItem item)
-        {
-            Item = item;
-            Name = item.GetDisplayName();
-            Units = item.unitCount;
-        }
-    }
-
     internal sealed class BulkTransferResult
     {
         public int MovedUnits { get; }
@@ -32,70 +16,43 @@ namespace ProbablyStolen_FlatStorage
         { MovedUnits = movedUnits; StoppedReason = stoppedReason; }
     }
 
-    internal sealed class BulkTransferPlan
+    internal static class BulkTransfer
     {
-        private readonly List<BulkTransferStep> steps;
-        private readonly BulkTransferSnapshot snapshot;
-        private readonly GameInventory[] inventories;
-        private bool consumed;
-
-        public GameInventory Target { get; }
-        public IReadOnlyList<BulkTransferRow> Rows { get; }
-        public string UnavailableReason { get; }
-        public int PlannedUnits => Rows.Sum(row => row.PlannedUnits);
-        public int BlockedUnits => Rows.Sum(row => row.Units - row.PlannedUnits);
-        public bool CanExecute => !consumed && steps.Count > 0 && string.IsNullOrEmpty(UnavailableReason);
-
-        internal BulkTransferPlan(GameInventory target, GameInventory[] inventories,
-            List<BulkTransferRow> rows, List<BulkTransferStep> steps, string unavailableReason)
+        internal static BulkTransferResult Execute(IReadOnlyList<BulkTransferStep> steps, Func<GameInventory, bool> targetAccessible,
+            Func<GameItem, bool> sourceAccessible)
         {
-            Target = target;
-            this.inventories = inventories;
-            Rows = rows.AsReadOnly();
-            this.steps = steps;
-            UnavailableReason = unavailableReason;
-            snapshot = new BulkTransferSnapshot(inventories);
-        }
-
-        public BulkTransferResult Execute(IEnumerable<GameInventory> currentAccessibleInventories)
-        {
-            if (!CanExecute) return new BulkTransferResult(0, UnavailableReason ?? ModText.Get("bulk.preview_expired"));
-            consumed = true;
-            var current = BulkTransfer.Inventories(currentAccessibleInventories);
-            if (!new HashSet<GameInventory>(current).SetEquals(inventories) || !snapshot.Matches())
-                return new BulkTransferResult(0, ModText.Get("bulk.preview_expired"));
-
-            var refreshed = BulkTransfer.Preview(Target, current);
-            if (!SameSteps(refreshed.steps))
-                return new BulkTransferResult(0, ModText.Get("bulk.preview_expired"));
-
             int moved = 0;
+            var remainingUnits = steps.Select(step => step.Item).Distinct().ToDictionary(item => item, item => item.unitCount);
             foreach (var step in steps)
             {
-                if (step.Item.parentInventory != step.SourceInventory || !BulkTransfer.MayMove(step.Item, Target) ||
+                var target = step.Target;
+                if (!targetAccessible(target) || !sourceAccessible(step.Item) || step.Item.parentInventory != step.SourceInventory ||
+                    step.Item.uniqueId != step.ItemId || step.Item.identifier != step.Identifier ||
+                    step.Item.unitCount != remainingUnits[step.Item] || !MayMove(step.Item, target) ||
                     step.Item.MaxNumRemove() < step.Units)
                     return Stopped(moved, step.Item);
                 SlotMarker slot;
                 if (step.StackItem != null || step.StackPlacement != null)
                 {
                     var destination = step.StackItem ?? step.StackPlacement.AcceptedItem;
-                    if (destination == null || destination.parentInventory != Target ||
+                    if (destination == null || destination.parentInventory != target ||
                         !destination.MayStack(step.Item)) return Stopped(moved, step.Item);
                     slot = destination.GetStackSlot(step.Item);
                 }
                 else
                 {
-                    if (Target is GameGridScrollableInventory scrollable && scrollable.alwaysStack &&
-                        Target.childItems.Any(existing => existing.MayStack(step.Item))) return Stopped(moved, step.Item);
-                    slot = Target.TryInventorySlot(step.Item, step.Units, step.Shape);
+                    if (target is GameGridScrollableInventory scrollable && scrollable.alwaysStack &&
+                        target.childItems.Any(existing => existing.MayStack(step.Item))) return Stopped(moved, step.Item);
+                    slot = target.TryInventorySlot(step.Item, step.Units, step.Shape);
                     if (slot != null && !BulkShape.Equal(slot.itemGridShape, step.Shape)) return Stopped(moved, step.Item);
                 }
-                if (slot == null || slot.inventory != Target || slot.numTransfer < step.Units)
+                if (slot == null || slot.inventory != target || slot.numTransfer < step.Units)
                     return Stopped(moved, step.Item);
                 int accepted = slot.TryAcceptOnce(step.Units);
                 if (accepted != step.Units)
                     throw new InvalidOperationException(ModText.Get("bulk.native_failure", step.Item.GetDisplayName(), moved, accepted, step.Units));
                 step.AcceptedItem = slot.targetItem ?? slot.item;
+                remainingUnits[step.Item] -= accepted;
                 moved += accepted;
             }
             return new BulkTransferResult(moved);
@@ -104,79 +61,20 @@ namespace ProbablyStolen_FlatStorage
         private static BulkTransferResult Stopped(int moved, GameItem item) =>
             new BulkTransferResult(moved, ModText.Get("bulk.stopped", item.GetDisplayName()));
 
-        private bool SameSteps(IReadOnlyList<BulkTransferStep> other)
+        internal static bool SameSteps(IReadOnlyList<BulkTransferStep> steps, IReadOnlyList<BulkTransferStep> other)
         {
             if (steps.Count != other.Count) return false;
+            var stepList = steps.ToList();
             var otherList = other.ToList();
             for (int i = 0; i < steps.Count; i++)
             {
                 var a = steps[i]; var b = other[i];
-                if (a.Item != b.Item || a.StackItem != b.StackItem || a.Units != b.Units ||
+                if (a.Item != b.Item || a.Target != b.Target || a.SourceInventory != b.SourceInventory || a.StackItem != b.StackItem || a.Units != b.Units ||
                     !BulkShape.Equal(a.Shape, b.Shape) ||
-                    steps.IndexOf(a.StackPlacement) != otherList.IndexOf(b.StackPlacement)) return false;
+                    stepList.IndexOf(a.StackPlacement) != otherList.IndexOf(b.StackPlacement)) return false;
             }
             return true;
         }
-    }
-
-    internal static class BulkTransfer
-    {
-        public static BulkTransferPlan Preview(GameInventory target, IEnumerable<GameInventory> accessibleInventories)
-        {
-            if (target == null) throw new ArgumentNullException(nameof(target));
-            var inventories = Inventories(accessibleInventories);
-            var rows = new List<BulkTransferRow>();
-            var steps = new List<BulkTransferStep>();
-            string unavailable = !inventories.Contains(target) || !GeneralHelper.MayPlayerInsertInto(target) || target.IsInsertLocked()
-                ? ModText.Get("bulk.target_unavailable") : null;
-            if (unavailable != null) return new BulkTransferPlan(target, inventories, rows, steps, unavailable);
-            var kinds = new HashSet<string>(target.childItems.Select(item => item.identifier).Where(id => !string.IsNullOrEmpty(id)), StringComparer.Ordinal);
-            if (kinds.Count == 0)
-                return new BulkTransferPlan(target, inventories, rows, steps, ModText.Get("bulk.target_empty"));
-
-            var reservations = target.childItems.Select(item => new BulkStackReservation(item)).ToList();
-            var occupied = new BulkPlacementReservations();
-            var candidates = inventories.Where(inventory => inventory != target).SelectMany(inventory => inventory.childItems)
-                .Distinct().Where(item => item.parentInventory != target && kinds.Contains(item.identifier))
-                .OrderBy(item => item.identifier, StringComparer.Ordinal).ThenBy(item => item.uniqueId).ToList();
-            foreach (var item in candidates)
-            {
-                var row = new BulkTransferRow(item);
-                rows.Add(row);
-                if (!MayMove(item, target)) { row.Reason = ModText.Get("bulk.restricted"); continue; }
-                int remaining = Math.Min(item.unitCount, item.MaxNumRemove());
-                foreach (var reservation in reservations)
-                {
-                    if (remaining <= 0) break;
-                    int available = reservation.Available(item, target);
-                    int amount = Math.Min(remaining, available);
-                    if (amount <= 0) continue;
-                    steps.Add(new BulkTransferStep(item, amount, reservation.Item, reservation.Placement));
-                    reservation.ReservedUnits += amount;
-                    row.PlannedUnits += amount;
-                    remaining -= amount;
-                }
-                while (remaining > 0)
-                {
-                    if (target is GameGridScrollableInventory scrollable && scrollable.alwaysStack &&
-                        reservations.Any(reservation => reservation.Compatible(item))) break;
-                    var slot = FindPlacement(target, item, remaining, occupied);
-                    if (slot == null || slot.numTransfer <= 0) break;
-                    int amount = Math.Min(remaining, slot.numTransfer);
-                    var step = new BulkTransferStep(item, amount, slot.itemGridShape.Clone());
-                    steps.Add(step);
-                    occupied.Add(step.Shape);
-                    reservations.Add(new BulkStackReservation(step));
-                    row.PlannedUnits += amount;
-                    remaining -= amount;
-                }
-                if (row.PlannedUnits < row.Units)
-                    row.Reason = ModText.Get(row.PlannedUnits == 0 ? "bulk.no_space" : "bulk.partial", row.Units - row.PlannedUnits);
-            }
-            if (rows.Count == 0) unavailable = ModText.Get("bulk.no_matches");
-            return new BulkTransferPlan(target, inventories, rows, steps, unavailable);
-        }
-
         internal static GameInventory[] Inventories(IEnumerable<GameInventory> inventories)
         {
             if (inventories == null) throw new ArgumentNullException(nameof(inventories));
@@ -197,7 +95,7 @@ namespace ProbablyStolen_FlatStorage
                 item.MayRemove() && target.MayHaveValidInventorySlot(item) && item.MaxNumRemove() > 0;
         }
 
-        private static SlotMarker FindPlacement(GameInventory target, GameItem item, int amount, BulkPlacementReservations occupied)
+        internal static SlotMarker FindPlacement(GameInventory target, GameItem item, int amount, BulkPlacementReservations occupied)
         {
             int width, height;
             if (target is GameGridInventory grid) { width = grid.inventoryShape.width; height = grid.inventoryShape.height; }
@@ -223,20 +121,64 @@ namespace ProbablyStolen_FlatStorage
         }
     }
 
+    internal sealed class BulkTransferDestination
+    {
+        internal readonly GameInventory Target;
+        private readonly List<BulkStackReservation> reservations;
+        private readonly BulkPlacementReservations occupied = new BulkPlacementReservations();
+
+        internal BulkTransferDestination(GameInventory target)
+        {
+            Target = target ?? throw new ArgumentNullException(nameof(target));
+            reservations = target.childItems.Select(item => new BulkStackReservation(item)).ToList();
+        }
+
+        internal int Allocate(GameItem item, int requested, List<BulkTransferStep> steps)
+        {
+            if (!BulkTransfer.MayMove(item, Target)) return 0;
+            int remaining = Math.Min(requested, item.MaxNumRemove());
+            int available = remaining;
+            foreach (var reservation in reservations)
+            {
+                if (remaining <= 0) break;
+                int amount = Math.Min(remaining, reservation.Available(item, Target));
+                if (amount <= 0) continue;
+                steps.Add(new BulkTransferStep(item, Target, amount, reservation.Item, reservation.Placement));
+                reservation.ReservedUnits += amount;
+                remaining -= amount;
+            }
+            while (remaining > 0)
+            {
+                if (Target is GameGridScrollableInventory scrollable && scrollable.alwaysStack &&
+                    reservations.Any(reservation => reservation.Compatible(item))) break;
+                var slot = BulkTransfer.FindPlacement(Target, item, remaining, occupied);
+                if (slot == null || slot.numTransfer <= 0) break;
+                int amount = Math.Min(remaining, slot.numTransfer);
+                var step = new BulkTransferStep(item, Target, amount, slot.itemGridShape.Clone());
+                steps.Add(step); occupied.Add(step.Shape);
+                reservations.Add(new BulkStackReservation(step));
+                remaining -= amount;
+            }
+            return available - remaining;
+        }
+    }
+
     internal sealed class BulkTransferStep
     {
         internal readonly GameItem Item, StackItem;
-        internal readonly GameInventory SourceInventory;
+        internal readonly GameInventory SourceInventory, Target;
         internal readonly BulkTransferStep StackPlacement;
         internal readonly int Units;
+        internal readonly int ItemId;
+        internal readonly string Identifier;
         internal readonly GridShape Shape;
         internal GameItem AcceptedItem;
 
-        internal BulkTransferStep(GameItem item, int units, GridShape shape)
-        { Item = item; SourceInventory = item.parentInventory; Units = units; Shape = shape; }
+        internal BulkTransferStep(GameItem item, GameInventory target, int units, GridShape shape)
+        { Item = item; ItemId = item.uniqueId; Identifier = item.identifier; Target = target; SourceInventory = item.parentInventory; Units = units; Shape = shape; }
 
-        internal BulkTransferStep(GameItem item, int units, GameItem stackItem, BulkTransferStep stackPlacement)
-        { Item = item; SourceInventory = item.parentInventory; Units = units; StackItem = stackItem; StackPlacement = stackPlacement; }
+        internal BulkTransferStep(GameItem item, GameInventory target, int units, GameItem stackItem, BulkTransferStep stackPlacement)
+        { Item = item; ItemId = item.uniqueId; Identifier = item.identifier; Target = target; SourceInventory = item.parentInventory; Units = units; StackItem = stackItem; StackPlacement = stackPlacement; }
     }
 
     internal sealed class BulkStackReservation
@@ -294,7 +236,7 @@ namespace ProbablyStolen_FlatStorage
         private readonly BulkItemSnapshot[] items;
         private readonly KeyValuePair<PixelWindow, bool>[] windows;
 
-        internal BulkTransferSnapshot(IEnumerable<GameInventory> source)
+        internal BulkTransferSnapshot(IEnumerable<GameInventory> source, Func<GameItem, bool> observeState)
         {
             player = PlayerStore.Instance;
             identity = player == null ? null : player.runID + ":" + player.saveSlotId;
@@ -302,7 +244,7 @@ namespace ProbablyStolen_FlatStorage
             var sourceList = source.ToList();
             inventories = sourceList.Select(inventory => new BulkInventorySnapshot(inventory)).ToArray();
             items = sourceList.SelectMany(inventory => inventory.childItems.Concat(GraphUtils.FindParentsType<GameItem>(inventory)))
-                .Distinct().Select(item => new BulkItemSnapshot(item)).ToArray();
+                .Distinct().Select(item => new BulkItemSnapshot(item, observeState(item))).ToArray();
             windows = sourceList.SelectMany(inventory => GraphUtils.FindParentsType<PixelWindow>(inventory)).Distinct()
                 .Select(window => new KeyValuePair<PixelWindow, bool>(window, window.isLocked)).ToArray();
         }
@@ -346,21 +288,35 @@ namespace ProbablyStolen_FlatStorage
         private readonly GameInventory inventory;
         private readonly int units, id;
         private readonly string identifier;
+        private readonly string[] types;
+        private readonly bool observeState;
         private readonly GridShape shape;
-        private readonly JToken state, modifiedState;
+        private readonly JToken state, modifiedState, features;
+        private static readonly JsonSerializer FeatureSerializer = JsonSerializer.Create(new JsonSerializerSettings
+            { ContractResolver = new BulkFeatureContractResolver() });
 
-        internal BulkItemSnapshot(GameItem item)
+        internal BulkItemSnapshot(GameItem item, bool observeState)
         {
             this.item = item; inventory = item.parentInventory; units = item.unitCount; id = item.uniqueId; identifier = item.identifier;
+            this.observeState = observeState;
             shape = item.modifiedShape?.Clone();
-            state = item.state == null ? null : JToken.FromObject(item.state.dict);
-            modifiedState = item.modifiedState == null ? null : JToken.FromObject(item.modifiedState.dict);
+            // 机器保持身份与占格检查，其运行进度不参与普通物品收纳。
+            if (observeState)
+            {
+                types = item.GetGameItemType().OrderBy(type => type, StringComparer.Ordinal).ToArray();
+                state = item.state == null ? null : JToken.FromObject(item.state.dict);
+                modifiedState = item.modifiedState == null ? null : JToken.FromObject(item.modifiedState.dict);
+                features = JToken.FromObject(item.itemFeatures, FeatureSerializer);
+            }
         }
 
         internal bool Matches() => (!(item is GameItemElement element) || !element.IsDestroyed()) &&
             inventory == item.parentInventory && units == item.unitCount && id == item.uniqueId && identifier == item.identifier &&
             BulkShape.Equal(shape, item.modifiedShape) &&
+            (!observeState || types.SequenceEqual(item.GetGameItemType().OrderBy(type => type, StringComparer.Ordinal)) &&
             JToken.DeepEquals(state, item.state == null ? null : JToken.FromObject(item.state.dict)) &&
-            JToken.DeepEquals(modifiedState, item.modifiedState == null ? null : JToken.FromObject(item.modifiedState.dict));
+            JToken.DeepEquals(modifiedState, item.modifiedState == null ? null : JToken.FromObject(item.modifiedState.dict)) &&
+            JToken.DeepEquals(features, JToken.FromObject(item.itemFeatures, FeatureSerializer)));
     }
+
 }

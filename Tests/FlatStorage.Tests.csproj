@@ -14,6 +14,8 @@
     <Compile Include="..\ArrangementChanges.cs" Link="ArrangementChanges.cs" />
     <Compile Include="..\SaveDataPruning.cs" Link="SaveDataPruning.cs" />
     <Compile Include="..\StorageSearch.cs" Link="StorageSearch.cs" />
+    <Compile Include="..\ToolbarLayout.cs" Link="ToolbarLayout.cs" />
+    <Compile Include="..\StorageAffinity.cs" Link="StorageAffinity.cs" />
     <Reference Include="Newtonsoft.Json;Unity.Burst.Cecil">
       <HintPath>$(ManagedDir)\%(Identity).dll</HintPath>
     </Reference>

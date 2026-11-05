@@ -7,7 +7,8 @@ View opened, accessible containers, personal storage and machines from the curre
 [*]Use the mouse wheel to zoom. Pan with the middle button, the right button over empty space, or Space and the left button.
 [*]Search items by name or category. Matching items remain highlighted; press Enter to focus each match.
 [*]Choose a container in the group directory to focus its storage.
-[*]Review a bulk transfer before confirming. Each move uses the game's native placement checks.
+[*]Search, filters and canvas controls share a bottom toolbar. Toggle the persistent bottom-right mini map.
+[*]Auto store matches loose items from main storage and both tables to ordinary containers using categories, contraband and other attributes. Review destinations before confirming.
 [*]Automatic arrangement keeps the counter central and groups similar contents and machines. Disable it to move groups manually.
 [*]Open the native trading panel above the canvas and use the game's trading controls.
 [/list]

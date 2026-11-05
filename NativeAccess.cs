@@ -91,8 +91,8 @@ namespace ProbablyStolen_FlatStorage
             registered = WindowsHandler.current.visibleWindows.Contains(window);
             closeCallback = window.closeCallback;
             CaptureLayoutSizes(window.handler.GetComponentsInChildren<TreeNodeRender>(true));
-            Group = FlatUI.Panel(canvas, "Storage Group", new Color(.10f, .12f, .14f, .96f));
-            Header = FlatUI.Panel(Group, "Group Header", new Color(.20f, .25f, .29f));
+            Group = FlatUI.Panel(canvas, "Storage Group", FlatUI.Surface);
+            Header = FlatUI.Panel(Group, "Group Header", FlatUI.Field);
             Label = FlatUI.Text(Header, source.Label, 7);
             Label.text.enableWordWrapping = false;
             Label.text.overflowMode = TMPro.TextOverflowModes.Ellipsis;

@@ -16,10 +16,12 @@ namespace ProbablyStolen_FlatStorage
         internal bool MovingGroup => moving != null;
         internal int EscapeFrame { get; private set; } = -1;
         internal int PanReleaseFrame { get; private set; } = -1;
-        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel, searchbar, errorLabel;
+        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel, automaticButton, errorLabel;
+        private TreeNodeRender noticePanel, noticeText;
         private CustomUIWindow window;
         private CanvasTools tools;
         private readonly List<TreeNodeRender> toolbarButtons = new List<TreeNodeRender>();
+        private readonly List<float> toolbarWidths = new List<float>();
         private bool viewDirty;
         private float appliedX, appliedY, appliedZoom, appliedWidth, appliedHeight;
         private Vector3 nativeScale;
@@ -34,6 +36,7 @@ namespace ProbablyStolen_FlatStorage
         private int screenWidth, screenHeight;
         private string notice;
         private float noticeUntil;
+        internal bool ShowMiniMap { get => state.ShowMiniMap; set => state.ShowMiniMap = value; }
 
         private void Awake()
         {
@@ -78,7 +81,7 @@ namespace ProbablyStolen_FlatStorage
 
         internal void Notice(string message)
         {
-            notice = message; noticeUntil = Time.unscaledTime + 3;
+            notice = message; noticeUntil = Time.unscaledTime + 6;
         }
 
         private void Open()
@@ -96,27 +99,36 @@ namespace ProbablyStolen_FlatStorage
             FlatUI.ManualLayout(window.ContentRoot);
             root = TreeNodeRender.InstantiateAsRoot(window.ContentRoot);
             root.image.sprite = null;
-            root.image.color = new Color(.07f, .085f, .10f, .99f);
+            root.image.color = FlatUI.CanvasColor;
             root.image.enabled = true;
             root.image.raycastTarget = true;
             root.mask.enabled = false;
-            toolbar = FlatUI.Panel(root, "Toolbar", new Color(.13f, .16f, .19f));
+            toolbar = FlatUI.Panel(root, "Toolbar", FlatUI.Surface);
             toolbarButtons.Clear();
-            AddButton(ModText.Get("ui.fit"), 58, Fit);
-            AddButton("100%", 40, () => { state.ZoomAt(ViewWidth / 2, ViewHeight / 2, 1); Apply(); Save(); });
-            AddButton(ModText.Get("ui.arrange"), 62, Arrange);
-            AddButton(ModText.Get("ui.trading"), 62, OpenTrading);
-            var automatic = AddButton(ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off"), 96, ToggleAutomatic);
-            automaticLabel = automatic.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
-            AddButton(ModText.Get("ui.close"), 44, Close);
+            toolbarWidths.Clear();
+            AddButton(ModText.Get("ui.fit"), 48, Fit);
+            AddButton("100%", 36, () => { state.ZoomAt(ViewWidth / 2, ViewHeight / 2, 1); Apply(); Save(); });
+            AddButton(ModText.Get("ui.arrange"), 54, Arrange);
+            AddButton(ModText.Get("ui.trading"), 54, OpenTrading);
+            automaticButton = AddButton(ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off"), 86, ToggleAutomatic);
+            automaticLabel = automaticButton.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
+            FlatUI.ActiveButton(automaticButton, state.AutoArrange);
+            AddButton(ModText.Get("ui.close"), 36, Close);
             status = FlatUI.Text(toolbar, "", 7);
-            searchbar = FlatUI.Panel(root, "Search", new Color(.13f, .16f, .19f));
+            status.text.color = FlatUI.Muted;
             viewport = FlatUI.Panel(root, "Viewport", Color.clear);
             viewport.mask.enabled = true;
             content = FlatUI.Panel(viewport, "Canvas Content", Color.clear);
             content.image.raycastTarget = false;
             NativeAccess.Place(content, 0, 0, 0, 0);
-            tools = new CanvasTools(this, window, searchbar);
+            tools = new CanvasTools(this, window, toolbar, viewport);
+            noticePanel = FlatUI.Panel(viewport, "Notice", FlatUI.Surface);
+            noticePanel.image.raycastTarget = false;
+            noticeText = FlatUI.Text(noticePanel, "", 7.5f);
+            noticeText.text.enableWordWrapping = true;
+            noticeText.text.overflowMode = TMPro.TextOverflowModes.Overflow;
+            noticePanel.gameObject.SetActive(false);
+            toolbar.rectTransform.SetAsLastSibling();
             entry.gameObject.SetActive(false);
             Resize();
             RefreshSources();
@@ -134,6 +146,7 @@ namespace ProbablyStolen_FlatStorage
         {
             var button = FlatUI.Button(toolbar, label, 0, width, () => Run(action));
             toolbarButtons.Add(button);
+            toolbarWidths.Add(width);
             return button;
         }
 
@@ -191,26 +204,20 @@ namespace ProbablyStolen_FlatStorage
             root.rectTransform.localScale = new Vector3(sx, sy, 1);
             float width = host.rect.width / sx, height = host.rect.height / sy;
             NativeAccess.Place(root, 0, 0, width, height);
-            float searchHeight = tools.Layout(width);
-            NativeAccess.Place(searchbar, 0, 0, width, searchHeight);
-            float x = 4, y = 3;
-            foreach (var button in toolbarButtons)
-            {
-                float w = button.rectTransform.sizeDelta.x;
-                if (x + w > width - 4 && x > 4) { x = 4; y += 22; }
-                NativeAccess.Place(button, x, y, w, 18); x += w + 4;
-            }
-            float toolbarHeight = y + 38;
-            NativeAccess.Place(toolbar, 0, Math.Max(searchHeight, height - toolbarHeight), width, toolbarHeight);
-            NativeAccess.Place(status, 4, y + 20, Math.Max(1, width - 8), 16);
-            NativeAccess.Place(viewport, 0, searchHeight, width, Math.Max(1, height - toolbarHeight - searchHeight));
+            var layout = ToolbarLayout.Compute(width, tools.Widths(width), toolbarWidths);
+            tools.Layout(layout.Primary);
+            for (int i = 0; i < toolbarButtons.Count; i++) FlatUI.SizeButton(toolbarButtons[i], layout.Secondary[i]);
+            NativeAccess.Place(toolbar, 0, Math.Max(0, height - layout.Height), width, layout.Height);
+            var statusBox = layout.Status;
+            NativeAccess.Place(status, statusBox.X, statusBox.Y, statusBox.Width, statusBox.Height);
+            NativeAccess.Place(viewport, 0, 0, width, Math.Max(1, height - layout.Height));
             tools.ResizeDialogs(ViewWidth, ViewHeight);
             viewDirty = true;
         }
 
         internal bool PointerInViewport => IsOpen && RectTransformUtility.RectangleContainsScreenPoint(viewport.rectTransform, Input.mousePosition);
         internal bool OwnsInventoryPointer => PointerInViewport && tools != null && !tools.HasDialog &&
-            !tools.PickingTarget && !StoreUIManager.IsAnyTyping() && OwnsPointer();
+            !tools.BlocksCanvasPointer && !StoreUIManager.IsAnyTyping() && OwnsPointer();
         internal bool OwnsPointer()
         {
             if (!IsOpen || EventSystem.current == null) return false;
@@ -241,7 +248,7 @@ namespace ProbablyStolen_FlatStorage
 
         internal void BeginGroupDrag(WindowLease group)
         {
-            if (state.AutoArrange || Panning || IsItemDragging || tools.PickingTarget || tools.HasDialog) return;
+            if (state.AutoArrange || Panning || IsItemDragging || tools.BlocksCanvasPointer || tools.HasDialog) return;
             moving = group;
             lastPointer = Pointer();
             group.Group.rectTransform.SetAsLastSibling();
@@ -275,11 +282,10 @@ namespace ProbablyStolen_FlatStorage
         private void UpdateCanvas()
         {
             Vector2 pointer = Pointer();
-            tools.Update();
             if (Input.GetMouseButtonDown(1) && !IsItemDragging && !MovingGroup && PointerOnBlank()) RightPanning = true;
             bool panKey = (RightPanning && Input.GetMouseButton(1)) || Input.GetMouseButton(2) ||
                 (Input.GetKey(KeyCode.Space) && Input.GetMouseButton(0) && !StoreUIManager.IsAnyTyping());
-            bool canPan = PointerInViewport && OwnsPointer() && !tools.PickingTarget && !tools.HasDialog;
+            bool canPan = PointerInViewport && OwnsPointer() && !tools.BlocksCanvasPointer && !tools.HasDialog;
             if (panKey && !Panning && canPan) { Panning = true; moving = null; lastPointer = pointer; }
             if (Panning)
             {
@@ -300,7 +306,7 @@ namespace ProbablyStolen_FlatStorage
             lastPointer = pointer;
             if (canPan && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl) && Input.mouseScrollDelta.y != 0)
             { state.ZoomAt(pointer.x, pointer.y, state.Zoom * Mathf.Pow(1.12f, Input.mouseScrollDelta.y)); Save(); }
-            if (IsItemDragging && PointerInViewport && OwnsPointer() && !Panning)
+            if (IsItemDragging && PointerInViewport && OwnsPointer() && !tools.BlocksCanvasPointer && !Panning)
             {
                 const float edge = 18;
                 float dx = pointer.x < edge ? edge - pointer.x : pointer.x > ViewWidth - edge ? ViewWidth - edge - pointer.x : 0;
@@ -371,8 +377,19 @@ namespace ProbablyStolen_FlatStorage
 
         private void UpdateStatus()
         {
-            string value = Time.unscaledTime < noticeUntil ? notice : ModText.Get("ui.status", Mathf.RoundToInt(state.Zoom * 100), leases.Count);
+            string value = tools.MatchStatus.Length > 0 ? tools.MatchStatus : ModText.Get("ui.status", Mathf.RoundToInt(state.Zoom * 100), leases.Count);
             if (status.text.text != value) status.text.text = value;
+            bool showNotice = Time.unscaledTime < noticeUntil;
+            noticePanel.gameObject.SetActive(showNotice);
+            if (showNotice)
+            {
+                float width = Math.Max(1, Math.Min(320, ViewWidth * .65f));
+                float height = noticeText.text.GetPreferredValues(notice, Math.Max(1, width - 12), float.PositiveInfinity).y + 12;
+                noticeText.text.text = notice;
+                NativeAccess.Place(noticePanel, 6, Math.Max(0, ViewHeight - height - 6), width, height);
+                NativeAccess.Place(noticeText, 6, 6, Math.Max(1, width - 12), Math.Max(1, height - 12));
+                noticePanel.rectTransform.SetAsLastSibling();
+            }
         }
 
         private void UpdateDrag()
@@ -419,13 +436,6 @@ namespace ProbablyStolen_FlatStorage
             Focus(point.x, -point.y);
         }
 
-        internal TreeNodeRender CreatePointerCover()
-        {
-            var cover = FlatUI.Panel(viewport, "Choose destination", new Color(.2f, .5f, .7f, .06f));
-            NativeAccess.Place(cover, 0, 0, ViewWidth, ViewHeight);
-            return cover;
-        }
-
         internal void RefreshNow()
         {
             RefreshSources();
@@ -463,6 +473,7 @@ namespace ProbablyStolen_FlatStorage
         {
             state.AutoArrange = !state.AutoArrange;
             automaticLabel.text.text = ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off");
+            FlatUI.ActiveButton(automaticButton, state.AutoArrange);
             moving = null;
             if (state.AutoArrange)
             {

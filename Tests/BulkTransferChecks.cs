@@ -1,6 +1,9 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 
 internal static class BulkTransferChecks
 {
@@ -35,6 +38,28 @@ internal static class BulkTransferChecks
         Check((bool)intersects.Invoke(reservations, new object[] { rotated })!, "旋转物品识别占格冲突");
         GridShape outside = new GridShapeBuilder(1, 1).SetDataFill(1).SetPosition(-3, -2).Build();
         Check(!(bool)intersects.Invoke(reservations, new object[] { outside })!, "分离位置保持独立");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void Features(string workspace)
+    {
+        var resolverType = LoadMod(workspace).GetType("ProbablyStolen_FlatStorage.BulkFeatureContractResolver", true)!;
+        var serializer = JsonSerializer.Create(new JsonSerializerSettings
+            { ContractResolver = (IContractResolver)Activator.CreateInstance(resolverType, true)! });
+        var feature = new ItemFeature(ItemFeature.FeatureType.TemporarySelling)
+            .SetValueModifier(15).SetPreExposedValueMod(5).SetPublicDisplay("议价特征");
+        var original = JToken.FromObject(new[] { feature }, serializer);
+        Check(JToken.DeepEquals(original, JToken.FromObject(new[] { feature }, serializer)), "读取真实报价特征保持状态");
+        feature.SetValueModifier(25);
+        Check(!JToken.DeepEquals(original, JToken.FromObject(new[] { feature }, serializer)), "私有报价数值变化使预览失效");
+        feature.SetValueModifier(15).SetPreExposedValueMod(10);
+        Check(!JToken.DeepEquals(original, JToken.FromObject(new[] { feature }, serializer)), "未公开报价数值变化使预览失效");
+        feature.SetPreExposedValueMod(5);
+        feature.SetFeatureDiscovered(true);
+        Check(!JToken.DeepEquals(original, JToken.FromObject(new[] { feature }, serializer)), "发现状态变化使预览失效");
+        feature.SetFeatureDiscovered(false);
+        Check(JToken.DeepEquals(original, JToken.FromObject(new[] { feature }, serializer)), "真实报价状态恢复后序列化一致");
+        Check(!JToken.DeepEquals(original, JToken.FromObject(Array.Empty<ItemFeature>(), serializer)), "报价特征数量变化使预览失效");
     }
 
     private static Assembly LoadMod(string workspace) => AssemblyLoadContext.Default.LoadFromAssemblyPath(

@@ -15,12 +15,13 @@ internal static class RoadmapChecks
         foreach (bool automatic in new[] { true, false })
         {
             var created = CanvasState.Create(null, zoom, automatic);
-            Check(created.Zoom == zoom && created.AutoArrange == automatic, "新场景应用配置");
-            var saved = new CanvasState { Zoom = .5f, AutoArrange = !automatic, PanX = -85, PanY = 77 };
+            Check(created.Zoom == zoom && created.AutoArrange == automatic && created.ShowMiniMap, "新场景应用配置并显示小地图");
+            var saved = new CanvasState { Zoom = .5f, AutoArrange = !automatic, PanX = -85, PanY = 77, ShowMiniMap = false };
             var restored = CanvasState.Create(saved.Encode(), zoom, automatic);
             Check(restored.Zoom == saved.Zoom && restored.AutoArrange == saved.AutoArrange &&
-                restored.PanX == saved.PanX && restored.PanY == saved.PanY, "已有场景保留存档设置");
+                restored.PanX == saved.PanX && restored.PanY == saved.PanY && !restored.ShowMiniMap, "已有场景保留存档设置");
         }
+        Check(CanvasState.Decode("{\"Version\":1}").ShowMiniMap, "既有存档默认显示小地图");
         foreach (float invalid in new[] { 0, .24f, 2.01f, float.NaN, float.PositiveInfinity })
             Reject(() => CanvasState.Create(null, invalid, false));
     }
@@ -126,7 +127,8 @@ internal static class RoadmapChecks
             _ = string.Format(CultureInfo.InvariantCulture, english[key], arguments);
             _ = string.Format(CultureInfo.GetCultureInfo("zh-CN"), chinese[key], arguments);
         }
-        Check(english.ContainsKey("ui.search") && english.ContainsKey("ui.preview") && english.ContainsKey("settings.zoom"), "功能词条存在");
+        Check(english.ContainsKey("ui.search") && english.ContainsKey("ui.store_preview") &&
+            english.ContainsKey("ui.minimap") && english.ContainsKey("settings.zoom"), "功能词条存在");
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

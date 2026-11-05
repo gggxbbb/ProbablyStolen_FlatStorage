@@ -16,6 +16,7 @@ namespace ProbablyStolen_FlatStorage
     {
         public int Version = 1;
         public bool AutoArrange = true;
+        public bool ShowMiniMap = true;
         public float Zoom = 1;
         public float PanX = 16;
         public float PanY = 16;

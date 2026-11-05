@@ -189,3 +189,62 @@
 5. 每步用大存档（多机器、多嵌套容器）对比：打开画布尖刺、空闲定时、拖放、框选、开着搜索与目录时的帧时
 
 验收时建议在 F8 控制台顺带跑一遍 `mod-scan`，并确认跨容器拖放与自动入库仍走原生插入路径。
+
+
+---
+
+## Hook 替代定时刷新：对照表
+
+目标：**自己改库存 / 开窗 / 切场景时立刻标脏**；定时轮询降成「无脏几乎空跑」的兜底（建议默认 1–2s，或仅在 `dirty` 时才全量 `Validate`）。不要指望零定时——机器后台产出、其他模组改库存、原生 layout 晚一拍改尺寸，公开事件往往不全。
+
+脏位建议拆开，避免「随便一动就全员 Validate」：
+
+| 脏位 | 含义 | 典型处理 |
+|---|---|---|
+| `sourcesDirty` | 可见仓储集合可能变了 | 跑 `StorageDiscovery.Collect`，增删 lease |
+| `leaseDirty(window)` | 某窗页签 / 子树 / 尺寸可能变了 | 只对该 `WindowLease` 做完整 `Refresh` |
+| `catalogDirty` | 物品集合或搜索相关 | 有搜索/分类时才重建 `StorageCatalog` |
+| `arrangeDirty` | 结构或归属变了 | 用户开了自动排列才 `ArrangeLayout` |
+| `placementOnly` | 仅画布坐标 / Cull | 轻量 `RefreshPlacement`，不做 `Validate` |
+
+### 已有钩子 → 建议标脏
+
+| 现有入口 | 位置 | 建议动作 |
+|---|---|---|
+| `ModHook.OnGameLoadedInit` / `OnGameLoadedLate` | `ModEntry.cs` | 读档后 `sourcesDirty`；打开画布时再全量同步 |
+| `ModHook.OnAfterhourArriveEarly` / `OnAfterhourLeaveEarly` / `OnGoingSleepEarly` | `ModEntry.cs` | 已有关闭路径；关闭前按旧 `scene` 键 `Save`，清脏 |
+| `PlayerStore.SaveGame` Prefix | `NativePatches.cs` | 保持 `Save()`；不必为此全量 Refresh |
+| `PixelWindow.Show` Postfix | `NativePatches.cs` | 已有 `OpenedContainers.Remember`；再 `sourcesDirty` + 该窗 `leaseDirty`（或直接 `RefreshNow` 若画布开着） |
+| `PixelWindow.Hide` Prefix | `NativePatches.cs` | 租约窗被藏时 `sourcesDirty`，拆 lease |
+| `MachineryTabs.Validate` Prefix / `RefreshTabs` Postfix | `NativePatches.cs` | 租约内 Tab 变化 → 该窗 `leaseDirty`（这是页签平铺最关键的钩） |
+| `ItemMouseDragHandler.EndDrag` Prefix | `NativePatches.cs` | 放下成功路径后：源/目标窗 `leaseDirty`，`catalogDirty`；失败可不动 |
+| `ItemMultiSelectHandler.EndGroupDrag` Prefix | `NativeSelection.cs` | 同上，批量落点后标脏相关窗 |
+| `TreeNodeRender.SetParent` Postfix | `NativePatches.cs` | 画布内重挂接后，对应窗 `leaseDirty`（若仅世界变换则 `placementOnly`） |
+| 控制器内 `RefreshNow`（自动入库等） | `FlatStorageController.cs` | 改为「标脏 + 本帧或下一帧冲刷」，避免与定时刷新叠两次全量 |
+
+### 建议新增的钩子（优先 ModHook，不够再 Harmony）
+
+| 目标 | 钩法 | 标脏 | 说明 |
+|---|---|---|---|
+| 场景 / Travel 切换 | 已有 Leaving；若 SceneKey 会先变，在 `UpdateFrame` 检测到变化前先按旧键 Save | `sourcesDirty`，关画布 | 修布局丢失，顺便去掉「无事件只能盲等」 |
+| 分页被点选 | Harmony `MachineryTabs` 选中/切页方法（以反编译名为准），或 `RefreshTabs` 已够用则只加强 Postfix | 该窗 `leaseDirty` | 比 0.25s 轮询更快对齐平铺高度 |
+| 库存格子结构变化 | 若有 `GameGridInventory` / `GameSlotInventory` 的 add/remove/Validate 公开点，Postfix 标父窗 | `leaseDirty` + `catalogDirty` | 覆盖「非拖放」的塞取；没有稳定方法就别硬钩私有字段 |
+| 交易 UI 打开/关闭 | `OpenTrading` 成功/失败路径显式标脏，失败只关画布不 `enabled=false` | `sourcesDirty` | 交易窗进出集合会变 |
+| 自动入库 Preview/Execute | `AutoStorage` / `BulkTransfer` 结束 | 涉及窗 `leaseDirty` + `catalogDirty` | 已有 `RefreshNow`，改成脏冲刷即可 |
+| 搜索框 / 分类变更 | UI 回调 | 仅 `catalogDirty` | 与租赁刷新解耦 |
+
+找不到稳定方法时：**不要为了消灭定时去钩私有实现细节**；保留低频兜底更抗游戏小版本。
+
+### 定时器退居二线后的形态
+
+```text
+每帧 / 事件：
+  if dirty: FlushDirty()   // 按脏位做最小工作
+  Apply / Cull / 输入     // 仍每帧，但不 Validate
+
+每 N 秒（N≈1–2，可配置）：
+  if !anyDirty: 可选轻量「窗还在不在」核对，或直接 return
+  else: FlushDirty()
+```
+
+验收要点：后台产出一格物品、打开嵌套容器、切机器页、跨容器拖放、自动入库后，画布与搜索高亮是否在一帧内跟上；大存档空闲时 CPU 应接近「几乎只有 Cull + 输入」。

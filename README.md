@@ -148,7 +148,7 @@ Release 构建和 58 项游戏外测试已通过。测试覆盖原生清单读�
 pwsh -NoProfile -File .\scripts\Publish-Workshop.ps1 -ValidateOnly -GameDir 'D:\Games\Probably Stolen'
 ```
 
-`preview.png` 是预览图源文件，`Workshop/description.zh.txt` 和 `Workshop/description.en.txt` 保存中英文描述，`Workshop/upload.vdf` 保存目标条目配置。打包工具生成用于上传的 JPEG 预览图。
+`preview.png` 是预览图源文件，`Workshop/description.zh.txt` 和 `Workshop/description.en.txt` 保存完整中英文说明，`Workshop/upload.vdf` 保存目标条目配置。打包工具生成用于上传的 JPEG 预览图。常规发布保留创意工坊现有标题与说明；明确更新说明时，分别维护简体中文和英语页面，每份文案的 UTF-8 长度需小于 8000 字节。
 
 完成游戏内验收后，运行 `.\Publish.cmd` 进入上传流程。脚本会再次构建和验证发布包，显示公开的 Workshop 条目 `3833606510` 与应用 `4348910`，并要求手动输入 `PUBLISH`。随后输入 Steam 账户名，在 SteamCMD 中完成密码与 Steam Guard 验证。上传完成后核对 SteamCMD 结果和创意工坊页面。
 

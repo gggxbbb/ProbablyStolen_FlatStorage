@@ -5,7 +5,5 @@
     "contentfolder" "{{CONTENT_FOLDER}}"
     "previewfile" "{{PREVIEW_FILE}}"
     "visibility" "0"
-    "title" "扁平存储 Flat Storage"
-    "description" "{{DESCRIPTION}}"
     "changenote" "{{CHANGE_NOTE}}"
 }

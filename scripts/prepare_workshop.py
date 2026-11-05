@@ -30,15 +30,18 @@ def prepare(root: Path, content: Path, output: Path, version: str) -> None:
     item = document["workshopitem"]
     if item["appid"] != "4348910" or item["publishedfileid"] != "3833606510":
         raise ValueError("Workshop application or item ID is invalid")
+    item.pop("title", None)
+    item.pop("description", None)
     descriptions = [
         (root / "Workshop" / f"description.{language}.txt").read_text(encoding="utf-8").strip()
         for language in ("zh", "en")
     ]
     if any(not description or version not in description for description in descriptions):
         raise ValueError("Workshop descriptions must include the release version")
+    if any(len(description.encode("utf-8")) >= 8_000 for description in descriptions):
+        raise ValueError("Each Workshop description must be smaller than 8,000 UTF-8 bytes")
     item["contentfolder"] = content.resolve().as_posix()
     item["previewfile"] = preview.resolve().as_posix()
-    item["description"] = "\n\n".join(descriptions)
     item["changenote"] = f"Flat Storage {version}"
     if not content.is_dir() or not (content / "ProbablyStolen_FlatStorage.dll").is_file():
         raise ValueError("The release content directory is incomplete")

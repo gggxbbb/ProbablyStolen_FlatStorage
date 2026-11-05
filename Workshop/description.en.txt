@@ -1,25 +1,73 @@
 [h1]Flat Storage[/h1]
-View opened, accessible containers, personal storage and machines from the current Probably Stolen scene on one canvas. Pan, zoom, drag items between containers, and use every unlocked page and native machine control.
+View accessible containers, unlocked pages and machine controls from the current Probably Stolen scene on one canvas. Pan, zoom and transfer items between them.
+
+[h2]Accessible containers and machines[/h2]
+Open a container through the game's usual interface before using it on the canvas, and unlock locked containers first. Boxes, backpacks and nested containers appear recursively as their access conditions are met. Story containers and unlockable facilities follow the game's progression rules.
+
+Each object's accessible pages appear side by side. Inventories retain their original grids, item shapes and capacities, and machine controls perform their usual actions. Manual transfers between containers, pages and machines follow the game's ownership, item-type, placement and machine restrictions.
 
 [h2]Controls[/h2]
 [list]
-[*]Press the backslash key or click the top-right button to open the canvas.
-[*]Use the mouse wheel to zoom. Pan with the middle button, the right button over empty space, or Space and the left button.
-[*]Search items by name or category. Matching items remain highlighted; press Enter to focus each match.
-[*]Drag with the left button over empty space to select multiple items, then drag the selection to transfer them.
-[*]Browse containers in a tree that follows their parent relationships. Expand or collapse branches and click a name to focus its storage.
-[*]Search, filters and canvas controls share a bottom toolbar. Toggle the persistent bottom-right mini map.
-[*]Auto store matches loose items from main storage and both tables to ordinary containers using categories, contraband and other attributes. Review destinations before confirming.
-[*]Automatic arrangement keeps the counter central and groups similar contents and machines. Disable it to move groups manually.
-[*]Open the native trading panel above the canvas and use the game's trading controls.
+[*][b]Open or close:[/b] press the backslash key (\), or click Flat Storage at the top right. The shortcut can be changed in the game options.
+[*][b]Zoom:[/b] use the mouse wheel around the pointer, from 25% to 200%.
+[*][b]Pan:[/b] drag with the middle button, hold Space and drag with the left button, or right-drag over empty space.
+[*][b]Move items:[/b] left-drag into a destination grid. Rotation, flipping, splitting and context menus use the game's controls; Ctrl + wheel adjusts the native drag quantity.
+[*][b]Select several items:[/b] left-drag over empty canvas or inventory cells to draw a selection, then drag the selected items together. Selection works across visible containers and pages and respects occlusion.
+[*][b]Cancel:[/b] Esc cancels box selection, selected items or an item drag. When the canvas is idle, Esc closes it.
+[*][b]Move a container group:[/b] turn Auto arrange off, then left-drag its title.
+[*][b]View controls:[/b] Fit all shows the full layout; 100% resets zoom; Arrange recalculates container positions.
 [/list]
 
-[h2]Settings and saves[/h2]
-Configure the shortcut, default zoom, refresh interval, edge-pan speed and automatic-arrangement default in the game options. Canvas and group positions are saved per game save and scene. The interface supports Simplified Chinese and English.
+Dragging items near the canvas edge pans the view automatically. Search, category filters, Containers, Auto store, Mini map and the view controls share a compact bottom toolbar that wraps to fit the window. Category menus open upward and scroll through their options.
 
-Open containers through the native interface before using them here, and unlock locked containers first. Item transfers respect the game's ownership, shape, capacity, item-type and machine restrictions.
+[h2]Search and highlighting[/h2]
+Search accessible canvas pages by item name, identifier or category, including localized category names. Combine a query with the category dropdown to narrow the results.
 
-Mod version: 1.3.0
-Supported game compatibility version: 0.46D (main menu version 100-Rev6)
-Source and instructions: https://github.com/gggxbbb/ProbablyStolen_FlatStorage
-Code license: MIT
+Matches receive a highlighted outline while other items become dimmer. Press Enter in the search field or click Next to cycle through matching items. Scrollable inventories move to the selected result. Clear restores the full view.
+
+[h2]Container tree and mini map[/h2]
+Containers opens a tree showing the actual relationships between parent and nested containers. Click an arrow to expand or collapse a branch, or click a name to focus that group. Hover over a name to read its full container label. The directory updates when containers move, appear, disappear or change names, preserving valid collapsed branches and the scroll position. Deep trees support horizontal scrolling.
+
+The mini map sits above the toolbar at the bottom right and shows group positions and the current viewport. Click a group to focus it, or click empty map space to move the view. Use Mini map to show or hide it.
+
+[h2]Automatic storage[/h2]
+Auto store organizes your owned loose items from the shop's main cabinet and the tables inside and outside the counter window. Destinations are owned, opened, accessible ordinary containers whose existing contents establish what belongs there. Container objects, machines and fixed facilities remain in place.
+
+Matching considers item categories, contraband status and level, stolen status, hazardous-waste status and other item attributes. A container's profile reflects the grid space occupied by its existing contents. A destination must share an item category with the incoming item. Empty containers are excluded from automatic destinations, and unmatched items stay where they are. When a preferred container runs out of space, the remaining quantity can be assigned to other matching containers.
+
+[b]Review before moving:[/b] the preview lists destinations, quantities, match percentages and reasons for items being kept. Confirm transfer starts the planned moves. Every move respects the game's ownership, locking, pinning, nesting, grid-space and quantity restrictions.
+
+[b]Customer protection:[/b] while a customer is present, items on both tables and containers located on those tables stay unchanged. Eligible items and containers in the main cabinet can still participate.
+
+The preview is checked again when you confirm. A changed save, scene, customer or inventory state requires a fresh preview. If transfer conditions change during execution, processing stops; completed moves remain, and the remaining items stay in place. The result reports the moved quantity and any stopping reason.
+
+[h2]Automatic arrangement and manual layouts[/h2]
+Auto arrange is enabled by default and saved per scene. It places the two tables near the center, the main cabinet below them, and containers around that area. Nested containers stay near their parents, similar contents and labels influence grouping, and similar machines are placed near one another. All pages belonging to one object move as a group.
+
+Adding or removing accessible containers, changing their parent, resizing pages or resizing the screen updates the layout. Updates wait until dragging or panning ends and preserve the current pan and zoom. Ordinary item and quantity changes keep group positions stable. Click Arrange to regroup using the current contents and labels.
+
+Turn Auto arrange off to place groups manually. Their positions are saved, and new groups appear outside the existing layout. Turning it on arranges the current scene again.
+
+[h2]Trading above the canvas[/h2]
+Trading opens the game's shop trading panel above the canvas, saving the layout and cancelling an active item drag. The canvas stays open underneath. Clicks, scrolling and Esc follow the trading panel's usual behavior. Customers, prices, offers and trading conditions remain governed by the game.
+
+[h2]Settings, saves and language[/h2]
+The Flat Storage section in the game options provides the shortcut and four settings:
+[list]
+[*][b]Default zoom for new scenes:[/b] 100%, adjustable from 25% to 200%.
+[*][b]Storage refresh interval:[/b] 0.25 seconds, adjustable from 0.10 to 2.00 seconds.
+[*][b]Edge-pan speed:[/b] 12, adjustable from 0 to 30. Setting it to 0 disables automatic edge panning.
+[*][b]Auto arrange for new scenes:[/b] enabled by default.
+[/list]
+
+Existing scenes retain their saved zoom and arrangement choice. Group positions, viewport position, zoom and mini-map visibility are stored separately for each save and scene. Layouts are saved before scene changes, and loading a save removes obsolete records for items that no longer exist.
+
+The interface follows the game's language and includes Simplified Chinese and English. Groups outside the viewport receive fewer display updates and refresh when they return into view. Machine production, item consumption and game time follow the game's normal rules.
+
+[h2]Version and links[/h2]
+[b]Mod version:[/b] 1.3.0
+[b]Supported game compatibility version:[/b] 0.46D, shown as VERSION 100-Rev6 in the main menu.
+
+[url=https://github.com/gggxbbb/ProbablyStolen_FlatStorage]Source code and instructions[/url]
+[url=https://github.com/gggxbbb/ProbablyStolen_FlatStorage/issues]Report an issue[/url]
+[url=https://github.com/gggxbbb/ProbablyStolen_FlatStorage/blob/master/LICENSE]Code license: MIT[/url]

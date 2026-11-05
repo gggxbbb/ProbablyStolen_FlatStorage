@@ -216,17 +216,83 @@ namespace ProbablyStolen_FlatStorage
         }
 
         internal bool PointerInViewport => IsOpen && RectTransformUtility.RectangleContainsScreenPoint(viewport.rectTransform, Input.mousePosition);
-        internal bool OwnsInventoryPointer => PointerInViewport && tools != null && !tools.HasDialog &&
-            !tools.BlocksCanvasPointer && !StoreUIManager.IsAnyTyping() && OwnsPointer();
+        internal bool OwnsInventoryPointer => IsOpen && tools != null && SelectionInput.AllowsItems(
+            SelectionRegionAt(Input.mousePosition), tools.HasDialog || tools.BlocksCanvasPointer,
+            StoreUIManager.IsAnyTyping(), Panning, MovingGroup, Input.GetKey(KeyCode.Space));
+        internal Vector2 InventoryDisplayScale => new Vector2(
+            SelectionInput.RelativeScale(content.rectTransform.lossyScale.x, RenderHandler.current.overlayRoot.rectTransform.lossyScale.x),
+            SelectionInput.RelativeScale(content.rectTransform.lossyScale.y, RenderHandler.current.overlayRoot.rectTransform.lossyScale.y));
+        internal bool OwnsInventoryDropPointer
+        {
+            get
+            {
+                if (!IsOpen || tools == null || !PointerInViewport) return false;
+                var hit = PointerHit(Input.mousePosition);
+                bool tabTarget = hit != null && WindowLease.Tabs.Keys.Any(tabs => Enumerable.Range(0, tabs.count).Any(index =>
+                {
+                    var nodes = NativeTabsAccess.Get(tabs, index);
+                    return nodes.Page != null && nodes.Page.handler.gameObject.activeInHierarchy &&
+                        (hit.transform.IsChildOf(nodes.Plate.transform) || hit.transform.IsChildOf(nodes.Text.transform));
+                })) && MachineryTabs.FindDropInventoryAt(Input.mousePosition, null,
+                    ItemMouseDragHandler.current?.GetCurrentItem() as PixelElement) != null;
+                return SelectionInput.AllowsDrop(SelectionRegionAt(Input.mousePosition), tabTarget,
+                    tools.HasDialog || tools.BlocksCanvasPointer, StoreUIManager.IsAnyTyping(), Panning, MovingGroup, Input.GetKey(KeyCode.Space));
+            }
+        }
+        internal bool CanContinueSelection => IsOpen && tools != null && !tools.HasDialog &&
+            !StoreUIManager.IsAnyTyping() && !Panning && !MovingGroup && !Input.GetKey(KeyCode.Space);
+        internal Rect SelectionViewport
+        {
+            get
+            {
+                var corners = new Vector3[4];
+                viewport.rectTransform.GetWorldCorners(corners);
+                return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
+            }
+        }
+
+        internal SelectionPointerRegion SelectionRegionAt(Vector2 screenPosition)
+        {
+            if (!IsOpen || !RectTransformUtility.RectangleContainsScreenPoint(viewport.rectTransform, screenPosition))
+                return SelectionPointerRegion.Outside;
+            var hit = PointerHit(screenPosition);
+            if (hit == null || !hit.transform.IsChildOf(viewport.transform)) return SelectionPointerRegion.Control;
+            if (leases.Any(lease => hit.transform.IsChildOf(lease.Header.transform))) return SelectionPointerRegion.Header;
+            var node = hit.GetComponent<TreeNodeRender>();
+            if (node == null) return SelectionPointerRegion.Control;
+            if (node == viewport || node == content || leases.Any(lease => lease.Group == node)) return SelectionPointerRegion.Blank;
+            if (node.eventHandler != null && (node.eventHandler.mouseDragFunc.Count > 0 || node.eventHandler.mouseBeginDragFunc.Count > 0))
+                return SelectionPointerRegion.Control;
+            var element = node.FindParentElement();
+            if (element is GameItemElement item && FlatDragOwnership.Owns(item)) return SelectionPointerRegion.Item;
+            var nativeWindow = node.FindParentWindow();
+            if (element is GameInventory && nativeWindow != null && WindowLease.Active.ContainsKey(nativeWindow))
+                return SelectionPointerRegion.Inventory;
+            return SelectionPointerRegion.Control;
+        }
+
+        internal bool IsTopItemAt(GameItemElement item, Vector2 position)
+        {
+            var hit = PointerHit(position);
+            return hit != null && hit.GetComponent<TreeNodeRender>()?.FindParentElement() == item;
+        }
+
+        private GameObject PointerHit(Vector2 position)
+        {
+            if (EventSystem.current == null) return null;
+            hits.Clear();
+            EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = position }, hits);
+            var item = ItemMouseDragHandler.current?.GetCurrentItem() as GameItemElement;
+            return hits.FirstOrDefault(hit => hit.gameObject != null &&
+                (item == null || !hit.gameObject.transform.IsChildOf(item.fakeMiddle.transform)) &&
+                !NativeSelection.IsDragPreview(hit.gameObject.transform)).gameObject;
+        }
+
         internal bool OwnsPointer()
         {
-            if (!IsOpen || EventSystem.current == null) return false;
-            hits.Clear();
-            EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = Input.mousePosition }, hits);
-            var item = ItemMouseDragHandler.current?.GetCurrentItem() as GameItemElement;
-            var first = hits.FirstOrDefault(h => h.gameObject != null &&
-                (item == null || !h.gameObject.transform.IsChildOf(item.fakeMiddle.transform)));
-            return first.gameObject != null && first.gameObject.transform.IsChildOf(root.transform);
+            if (!IsOpen) return false;
+            var first = PointerHit(Input.mousePosition);
+            return first != null && first.transform.IsChildOf(root.transform);
         }
 
         private Vector2 Pointer()
@@ -248,7 +314,8 @@ namespace ProbablyStolen_FlatStorage
 
         internal void BeginGroupDrag(WindowLease group)
         {
-            if (state.AutoArrange || Panning || IsItemDragging || tools.BlocksCanvasPointer || tools.HasDialog) return;
+            if (state.AutoArrange || Panning || IsItemDragging || Input.GetKey(KeyCode.Space) || tools.BlocksCanvasPointer || tools.HasDialog) return;
+            ItemMultiSelectHandler.current?.Cancel();
             moving = group;
             lastPointer = Pointer();
             group.Group.rectTransform.SetAsLastSibling();
@@ -269,11 +336,14 @@ namespace ProbablyStolen_FlatStorage
             { Close(); return; }
             if (Input.GetKeyDown(KeyCode.Escape) && !StoreUIManager.IsAnyTyping())
             {
-                if (NegociationUIManager.Instance != null && NegociationUIManager.Instance.IsOpen && !IsItemDragging)
+                if (NegociationUIManager.Instance != null && NegociationUIManager.Instance.IsOpen && !IsItemDragging &&
+                    !(ItemMultiSelectHandler.current?.HasSelection ?? false))
                     return;
                 EscapeFrame = Time.frameCount;
                 if (tools.Escape()) return;
                 if (IsItemDragging) { NativeAccess.CancelDrag(); return; }
+                if (ItemMultiSelectHandler.current != null && ItemMultiSelectHandler.current.HasSelection)
+                { ItemMultiSelectHandler.current.Cancel(); return; }
                 Close(); return;
             }
             UpdateCanvas();
@@ -286,7 +356,11 @@ namespace ProbablyStolen_FlatStorage
             bool panKey = (RightPanning && Input.GetMouseButton(1)) || Input.GetMouseButton(2) ||
                 (Input.GetKey(KeyCode.Space) && Input.GetMouseButton(0) && !StoreUIManager.IsAnyTyping());
             bool canPan = PointerInViewport && OwnsPointer() && !tools.BlocksCanvasPointer && !tools.HasDialog;
-            if (panKey && !Panning && canPan) { Panning = true; moving = null; lastPointer = pointer; }
+            if (panKey && !Panning && canPan)
+            {
+                if (NativeSelection.IsBanding) ItemMultiSelectHandler.current?.Cancel();
+                Panning = true; moving = null; lastPointer = pointer;
+            }
             if (Panning)
             {
                 if (!panKey) { Panning = false; RightPanning = false; PanReleaseFrame = Time.frameCount; Save(); }
@@ -316,7 +390,7 @@ namespace ProbablyStolen_FlatStorage
             }
             if (Time.unscaledTime >= nextRefresh)
             { nextRefresh = Time.unscaledTime + ModSettings.RefreshInterval; RefreshSources(); }
-            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging, Panning)) ArrangeLayout(false);
+            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging || NativeSelection.IsBanding, Panning)) ArrangeLayout(false);
             Apply();
             UpdateStatus();
             if (IsItemDragging) UpdateDrag();
@@ -395,7 +469,13 @@ namespace ProbablyStolen_FlatStorage
         private void UpdateDrag()
         {
             var item = ItemMouseDragHandler.current?.GetCurrentItem() as GameItemElement;
-            if (item != null && ItemMouseDragHandler.current.IsDraggingItem && !item.IsDestroyed() &&
+            if (item != null && ItemMouseDragHandler.current.IsDraggingItem) ScaleDragPreview(item);
+            NativeAccess.RefreshDragTarget();
+        }
+
+        internal void ScaleDragPreview(GameItemElement item)
+        {
+            if (item != null && !item.IsDestroyed() &&
                 item.fakeMiddle.parent == RenderHandler.current.overlayRoot)
             {
                 var center = item.GetCenteredPosition();
@@ -405,7 +485,6 @@ namespace ProbablyStolen_FlatStorage
                     content.rectTransform.lossyScale.y / parentScale.y, 1);
                 item.SetCenteredPosition(center.Item1, center.Item2);
             }
-            NativeAccess.RefreshDragTarget();
         }
 
         internal void Focus(float x, float y)
@@ -439,7 +518,7 @@ namespace ProbablyStolen_FlatStorage
         internal void RefreshNow()
         {
             RefreshSources();
-            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging, Panning)) ArrangeLayout(false);
+            if (arrangementChanges.CanApply(state.AutoArrange, IsItemDragging || NativeSelection.IsBanding, Panning)) ArrangeLayout(false);
             Apply();
         }
 
@@ -479,7 +558,7 @@ namespace ProbablyStolen_FlatStorage
             {
                 arrangementChanges.Request();
                 RefreshSources();
-                if (!IsItemDragging && !Panning) ArrangeLayout(false);
+                if (!IsItemDragging && !NativeSelection.IsBanding && !Panning) ArrangeLayout(false);
             }
             Save();
         }

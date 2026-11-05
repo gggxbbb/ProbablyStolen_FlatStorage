@@ -175,6 +175,15 @@ var tests = new (string Name, Action Run)[]
     ("底部工具栏宽屏布局", ToolbarLayoutChecks.Wide),
     ("底部工具栏窄屏与连续宽度", ToolbarLayoutChecks.Narrow),
     ("底部工具栏输入边界", ToolbarLayoutChecks.EmptyAndValidation),
+    ("容器树父子层级", StorageTreeChecks.ParentOrder),
+    ("容器树展开与折叠", StorageTreeChecks.Collapse),
+    ("容器树稳定排序与可访问根", StorageTreeChecks.StableOrderingAndMissingParents),
+    ("容器树无效关系拒绝", StorageTreeChecks.RejectInvalidGraph),
+    ("容器树深层嵌套", StorageTreeChecks.DeepTree),
+    ("左键框选输入区域与操作互斥", SelectionChecks.Input),
+    ("框选范围与画布视口裁剪", SelectionChecks.Bounds),
+    ("多物品预览相对缩放", SelectionChecks.Scale),
+    ("真实原生多选与转移接口", () => SelectionChecks.Native(managed)),
     ("收纳用途类别匹配", StorageAffinityChecks.Categories),
     ("收纳违禁来源与危险属性", StorageAffinityChecks.Status),
     ("容器内容占格加权", StorageAffinityChecks.Weighting),
@@ -219,6 +228,7 @@ static void VerifyAssembly(string workspace, string managed)
     foreach (var type in mod.MainModule.Types)
     foreach (var attr in type.CustomAttributes.Where(a => a.AttributeType.FullName == "HarmonyLib.HarmonyPatch"))
     {
+        Check(attr.ConstructorArguments.Count >= 2, "Harmony 目标需要显式声明 " + type.FullName);
         var targetType = (TypeReference)attr.ConstructorArguments[0].Value;
         var targetName = (string)attr.ConstructorArguments[1].Value;
         var actualType = game.MainModule.Types.Single(t => t.FullName == targetType.FullName);
@@ -233,10 +243,26 @@ static void VerifyAssembly(string workspace, string managed)
         foreach (var hook in type.Methods.Where(m => m.Name is "Prefix" or "Postfix"))
         foreach (var parameter in hook.Parameters)
         {
+            TypeReference expected = null;
             if (parameter.Name.StartsWith("___"))
-                Check(actualType.Fields.Any(f => f.Name == parameter.Name.Substring(3)), "Harmony 字段缺失 " + parameter.Name);
+            {
+                var field = actualType.Fields.SingleOrDefault(f => f.Name == parameter.Name.Substring(3));
+                Check(field != null, "Harmony 字段缺失 " + parameter.Name);
+                expected = field.FieldType;
+            }
+            else if (parameter.Name == "__result") expected = methods[0].ReturnType;
             else if (!parameter.Name.StartsWith("__"))
-                Check(methods[0].Parameters.Any(p => p.Name == parameter.Name), "Harmony 参数缺失 " + parameter.Name);
+            {
+                var argument = methods[0].Parameters.SingleOrDefault(p => p.Name == parameter.Name);
+                Check(argument != null, "Harmony 参数缺失 " + parameter.Name);
+                expected = argument.ParameterType;
+            }
+            if (expected != null)
+            {
+                var expectedValue = expected is ByReferenceType expectedReference ? expectedReference.ElementType : expected;
+                var actualValue = parameter.ParameterType is ByReferenceType actualReference ? actualReference.ElementType : parameter.ParameterType;
+                Check(expectedValue.FullName == actualValue.FullName, "Harmony 类型不匹配 " + type.Name + "." + parameter.Name);
+            }
         }
         patches++;
     }

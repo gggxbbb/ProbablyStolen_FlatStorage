@@ -226,7 +226,7 @@ namespace ProbablyStolen_FlatStorage
             image.color = color;
         }
 
-        private static void SetColors(Selectable control, Color normal)
+        internal static void SetColors(Selectable control, Color normal)
         {
             if (control == null || control.targetGraphic == null)
                 throw new InvalidOperationException(ModText.Get("ui.component_missing", "Selectable graphic"));

@@ -165,20 +165,24 @@ namespace ProbablyStolen_FlatStorage
     [HarmonyPatch(typeof(InputActionHandler), nameof(InputActionHandler.UpdatePress))]
     internal static class CanvasInputPriority
     {
-        private static void Prefix(InputActionHandler __instance, ref ISet<KeyCode> keysPressed)
+        private static void Prefix(InputActionHandler __instance, ref ISet<KeyCode> keysPressed, out bool? __state)
         {
+            __state = null;
             var controller = FlatStorageController.Current;
             if (controller == null || (!controller.IsOpen && controller.EscapeFrame != Time.frameCount)) return;
             keysPressed = new HashSet<KeyCode>(keysPressed);
             if (controller.EscapeFrame == Time.frameCount) keysPressed.Remove(KeyCode.Escape);
             if (!controller.IsOpen) return;
-            if (__instance is ItemMouseDragHandler && controller.OwnsInventoryPointer && StoreUIManager.Instance != null)
-                StoreUIManager.Instance.hoveringStoreUI = false;
+            if ((__instance is ItemMouseDragHandler || __instance is ItemMultiSelectHandler) && !controller.OwnsInventoryPointer)
+                keysPressed.Remove(KeyCode.Mouse0);
             keysPressed.Remove(KeyCode.Mouse2);
             if (controller.RightPanning || controller.PanReleaseFrame == Time.frameCount) keysPressed.Remove(KeyCode.Mouse1);
             if (controller.Panning || controller.MovingGroup || Input.GetKey(KeyCode.Space))
                 keysPressed.Remove(KeyCode.Mouse0);
+            CanvasInventoryHover.Enter(__instance, out __state);
         }
+
+        private static void Postfix(bool? __state) => CanvasInventoryHover.Exit(__state);
     }
 
     [HarmonyPatch(typeof(InputActionHandler), nameof(InputActionHandler.UpdateMouseScroll))]
@@ -311,7 +315,7 @@ namespace ProbablyStolen_FlatStorage
             var controller = FlatStorageController.Current;
             if (controller == null || !controller.IsOpen) return true;
             var item = __instance.GetCurrentItem();
-            if (item == null || (item is GameItemElement element && element.IsDestroyed()) || !item.MayRemove() || !controller.PointerInViewport || !controller.OwnsPointer())
+            if (item == null || (item is GameItemElement element && element.IsDestroyed()) || !item.MayRemove() || !controller.OwnsInventoryDropPointer)
             { NativeAccess.CancelDrag(); return false; }
             NativeAccess.RefreshDragTarget();
             if (___lastInventory != null && item is GameItemElement graphic)

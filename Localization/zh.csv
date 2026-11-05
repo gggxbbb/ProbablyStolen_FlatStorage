@@ -43,6 +43,8 @@ ui.clear,清除
 ui.matches,{0} 件匹配物品
 ui.no_matches,没有匹配物品
 ui.navigate,容器目录
+ui.tree_expand,展开 {0}
+ui.tree_collapse,折叠 {0}
 ui.store,自动收纳
 ui.minimap,小地图
 ui.store_preview,收纳预览

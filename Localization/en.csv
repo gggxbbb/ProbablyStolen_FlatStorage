@@ -43,6 +43,8 @@ ui.clear,Clear
 ui.matches,{0} matching items
 ui.no_matches,No matching items
 ui.navigate,Containers
+ui.tree_expand,Expand {0}
+ui.tree_collapse,Collapse {0}
 ui.store,Auto store
 ui.minimap,Mini map
 ui.store_preview,Storage preview

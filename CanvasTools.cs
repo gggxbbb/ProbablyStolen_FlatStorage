@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using TMPro;
 using UnityEngine;
 
@@ -21,6 +22,7 @@ namespace ProbablyStolen_FlatStorage
         private int selectedMatch = -1;
         private CustomUIWindow navigation, preview;
         private string navigationSignature;
+        private readonly HashSet<string> collapsedContainers = new HashSet<string>(StringComparer.Ordinal);
         private AutoStoragePlan plan;
         internal bool HasDialog => navigation != null || preview != null;
         internal bool BlocksCanvasPointer => miniMap.ContainsPointer || category.dropdown.IsExpanded;
@@ -125,7 +127,8 @@ namespace ProbablyStolen_FlatStorage
             owner.Focus(matches[selectedMatch]);
         }
 
-        private string Signature() => string.Join("|", groups.Select(group => group.Source.Id + ":" + group.Source.Label));
+        private string Signature() => JsonConvert.SerializeObject(groups.Select(group => new[]
+            { group.Source.Id, group.Source.ParentId, group.Source.OwnLabel, group.Source.Label }));
 
         private void OpenNavigation()
         {
@@ -139,19 +142,19 @@ namespace ProbablyStolen_FlatStorage
         private void BuildNavigation()
         {
             navigationSignature = Signature();
-            CustomUIBuilder.ClearContainer(navigation.ContentRoot);
-            var builder = new CustomUIBuilder(CustomUIManager.Instance, navigation);
-            if (groups.Count == 0) builder.AddLabel(ModText.Get("ui.empty_groups"));
-            builder.BeginScrollFlexible(80);
-            foreach (var group in groups)
-            {
-                var destination = group;
-                builder.AddButton(group.Source.Label, () => owner.Run(() =>
-                { owner.Focus(destination.Bounds); CloseDialog(ref navigation); }));
-            }
-            builder.End();
-            builder.AddButton(ModText.Get("ui.close"), () => CloseDialog(ref navigation));
-            CustomUIBuilder.RebuildLayout(navigation.ContentRoot);
+            collapsedContainers.IntersectWith(groups.Select(group => group.Source.Id));
+            StorageTreeView.Build(navigation, groups, collapsedContainers,
+                id => owner.Run(() =>
+                {
+                    owner.Focus(groups.First(group => group.Source.Id == id).Bounds);
+                    CloseDialog(ref navigation);
+                }),
+                id => owner.Run(() =>
+                {
+                    if (!collapsedContainers.Add(id)) collapsedContainers.Remove(id);
+                    BuildNavigation();
+                }),
+                () => CloseDialog(ref navigation));
         }
 
         internal void UpdateView(Box view) => miniMap.UpdateView(view);

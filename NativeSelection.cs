@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
@@ -13,18 +12,26 @@ namespace ProbablyStolen_FlatStorage
             ?? throw new MissingFieldException(typeof(ItemMultiSelectHandler).FullName, "state");
         private static readonly FieldInfo Items = AccessTools.Field(typeof(ItemMultiSelectHandler), "selectedItems")
             ?? throw new MissingFieldException(typeof(ItemMultiSelectHandler).FullName, "selectedItems");
+        private static readonly object pendingBand = Enum.Parse(State.FieldType, "PendingBand");
+        private static readonly object banding = Enum.Parse(State.FieldType, "Banding");
         internal static bool Captured;
         internal static Vector2 GroupScale = Vector2.one;
-        internal static bool IsBanding => Captured && ItemMultiSelectHandler.current != null &&
-            (State.GetValue(ItemMultiSelectHandler.current).ToString() == "PendingBand" ||
-                State.GetValue(ItemMultiSelectHandler.current).ToString() == "Banding");
+        internal static bool IsBanding
+        {
+            get
+            {
+                if (!Captured || ItemMultiSelectHandler.current == null) return false;
+                var state = State.GetValue(ItemMultiSelectHandler.current);
+                return pendingBand.Equals(state) || banding.Equals(state);
+            }
+        }
 
-        internal static bool IsDragPreview(Transform transform)
+        internal static void CollectDragPreviews(ISet<Transform> roots)
         {
             var handler = ItemMultiSelectHandler.current;
-            return Captured && handler != null && handler.IsGroupDragging &&
-                ((List<GameItemElement>)Items.GetValue(handler)).Any(item => !item.IsDestroyed() &&
-                    transform.IsChildOf(item.fakeMiddle.transform));
+            if (!Captured || handler == null || !handler.IsGroupDragging) return;
+            foreach (var item in (List<GameItemElement>)Items.GetValue(handler))
+                if (!item.IsDestroyed()) roots.Add(item.fakeMiddle.transform);
         }
 
         internal static void ScaleGroup(List<GameItemElement> items, Dictionary<GameItemElement, Vector2> offsets)
@@ -37,7 +44,7 @@ namespace ProbablyStolen_FlatStorage
             foreach (var item in items)
             {
                 if (item.IsDestroyed()) continue;
-                var center = item.GetCenteredPosition();
+                var center = ratio != Vector2.one ? item.GetCenteredPosition() : default;
                 controller.ScaleDragPreview(item);
                 if (ratio != Vector2.one)
                 {
@@ -61,7 +68,7 @@ namespace ProbablyStolen_FlatStorage
             if (controller == null || !controller.IsOpen || StoreUIManager.Instance == null) return;
             previous = StoreUIManager.Instance.hoveringStoreUI;
             bool continuing = handler is ItemMultiSelectHandler && NativeSelection.Captured && controller.CanContinueSelection;
-            StoreUIManager.Instance.hoveringStoreUI = !(controller.OwnsInventoryPointer || continuing);
+            StoreUIManager.Instance.hoveringStoreUI = !(continuing || controller.OwnsInventoryPointer);
         }
 
         internal static void Exit(bool? previous)

@@ -36,8 +36,8 @@ def prepare(root: Path, content: Path, output: Path, version: str) -> None:
         (root / "Workshop" / f"description.{language}.txt").read_text(encoding="utf-8").strip()
         for language in ("zh", "en")
     ]
-    if any(not description or version not in description for description in descriptions):
-        raise ValueError("Workshop descriptions must include the release version")
+    if any(not description for description in descriptions):
+        raise ValueError("Workshop descriptions must contain text")
     if any(len(description.encode("utf-8")) >= 8_000 for description in descriptions):
         raise ValueError("Each Workshop description must be smaller than 8,000 UTF-8 bytes")
     item["contentfolder"] = content.resolve().as_posix()

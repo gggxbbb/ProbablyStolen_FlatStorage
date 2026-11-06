@@ -1,250 +1,75 @@
-# 扁平存储 性能分析与修改建议（2026-11-06）
+# 扁平存储性能实现（2026-11-06）
 
-基于 `master` / tag `1.3.0`（`dec4f8e`）静态审阅。原则不变：物品移动仍走原生 `TryInventorySlot` / `MayPlayerInsertInto`，优化只动调度与缓存，不改存档语义。
+当前实现将视口变换、窗口布局、库存目录和仓储发现分别调度。原生物品转移、访问权限与落点校验继续由游戏接口处理。
 
-## 结论
+## 输入查询
 
-1.3.0 的搜索、小地图、树目录、自动入库、框选本身不是主因；卡顿来自它们叠在「每 0.25s 对所有可见窗口做全量子树 Validate」和「每帧多次 `RaycastAll`」上。优先做**脏刷新**和**射线缓存**，通常比继续拧 UI 细节更划算。自动入库保持按需执行即可。
+`CanvasPointer` 复用 `PointerEventData` 和射线结果容器，按当前帧与屏幕坐标缓存原始顶部命中、排除拖动预览后的顶部命中。
 
-零改代码也可先试：设置里把刷新间隔调到 `0.5`–`1.0` 秒，立刻减负，但物品进出画布的可见延迟会变大。
+- 窗口移动、布局、挂载、对话窗口和拖动状态改变时使缓存失效。
+- 平移、分组拖动、输入框和对话窗口等条件在库存射线查询前判断。
+- 滚轮增量为零时直接进入原生处理流程。
+- 框选按检测坐标分别缓存，检查视口范围、所属窗口与真实遮挡。
+- 标题、分组和分页落点使用节点索引，避免遍历全部窗口及分页。
 
----
+画布在同帧中移动后会清除命中缓存，后续输入处理使用更新后的几何位置。分页落点继续调用原生 `MachineryTabs.FindDropInventoryAt`，最终放置继续执行实际库存校验。
 
-## 1.3.0 相对 1.2.0 加重 CPU 的功能
+## 窗口刷新
 
-| 功能 | 额外成本形态 |
+`WindowLease` 独立记录结构、布局和目录变化。重复事件通过队列合并，刷新开始时取走本次状态，刷新期间产生的新状态保留到后续处理。
+
+| 变化 | 更新范围 |
 |---|---|
-| 搜索 / 分类高亮 | 定时重建 `StorageCatalog`，有搜索时为每件物品建/改高亮边框 |
-| 小地图 | 每帧投影全部 mark，并更新视口四边框 |
-| 容器树 | signature 变时清容器重建行，并双次 `ForceUpdateCanvases` |
-| 自动入库 | 按需：亲和度 + 批量预览/执行（非常驻帧） |
-| 跨容器框选 | 候选物品多次射线命中判断遮挡 |
-| 定时刷新连带 | 每 `ModSettings.RefreshInterval`（默认 0.25s）全量同步时重建目录 |
+| 子节点、分页或所属关系 | 扫描相关窗口，维护分页登记、原生尺寸与恢复快照 |
+| 库存增减、形状、页面尺寸 | 验证相关窗口布局，更新分组范围 |
+| 数量或搜索属性 | 更新相关窗口的目录；筛选元数据改变时更新搜索结果 |
+| 容器打开、移动或锁定 | 请求重新发现仓储 |
+| 单纯平移或缩放 | 应用视口位置与可见性，更新小地图视口边框 |
 
----
+库存订阅使用 `onSlotAddItemLateFunc`、`onSlotRemoveItemLateFunc`、`onSlotChangeAmountItemFunc`。`GameItem.SetUnitCount`、`ValidateShapeState` 和分页变化另有 Harmony 通知。窗口释放时移除其订阅，分页迁移时交接所属窗口与恢复状态。
 
-## 热路径
+一次原生 `PixelWindow.Validate` 事务内，分页按变化版本合并重复布局；原生同步读取宽高的行为保持完整。`MachineryTabs.RefreshTabs` 的悬停颜色更新继续执行。
 
-### 每帧（画布打开：`Update` → `UpdateFrame` → `UpdateCanvas`）
+## 周期检查与调度
 
-| 函数 | 位置 | 开销原因 |
-|---|---|---|
-| `UpdateCanvas` | `FlatStorageController.cs:352-397` | 每帧跑完再 `Apply` + `UpdateStatus`；拖动物品时还有边缘平移与 `UpdateDrag` |
-| `PointerHit` / `PointerOnBlank` / `OwnsPointer` | `:280-313` | `EventSystem.RaycastAll`，整棵 UI 射线 |
-| `SelectionRegionAt` | `:254-272` | 再 `RaycastAll` + `leases.Any(IsChildOf)` |
-| `OwnsInventoryPointer` / `OwnsInventoryDropPointer` | `:219-240` | 经 `SelectionRegionAt`；Drop 还对每个 `MachineryTabs` 做嵌套 `Any` + `NativeTabsAccess.Get` + `FindDropInventoryAt` |
-| Harmony `CanvasInputPriority` / `CanvasInventoryMove` | `NativePatches.cs:165-186`、`NativeSelection.cs:73-78` | 输入更新里反复读 `OwnsInventoryPointer` → 再射线 |
-| `CanvasSelectionOcclusion` → `IsTopItemAt` | `NativeSelection.cs:140-148`、`FlatStorageController.cs:274-278` | 框选扫每个候选物品再 `RaycastAll` |
-| `Apply` → `lease.Cull` + `tools.UpdateView` | `FlatStorageController.cs:438-450`、`WindowLease.Cull:175-184`、`StorageMiniMap.UpdateView:69-98` | 视口脏时遍历全部 lease；小地图重算投影并摆 mark |
-| `UpdateStatus` | `:452-467` | 每帧字符串比较；有 notice 时 `GetPreferredValues` + `Place` |
-| `UpdateDrag` / `ScaleDragPreview` / `RefreshDragTarget` | `:469-487`、`NativeAccess.cs:39-43` | 反射 `ItemMouseDragHandler.Drag`；预览缩放与居中 |
+- 仓储发现采用可逐步推进的遍历，周期至少为 1 秒，并受刷新间隔设置控制。每帧最多推进 128 个步骤，步骤之间检查 0.75 毫秒预算。
+- 发现期间收到新的仓储变化时，下一次处理重新取得有效快照。
+- 窗口内容检查按照刷新间隔在窗口之间分配，每帧在窗口检查之间检查 1 毫秒预算。
+- 变化队列在窗口之间检查 1 毫秒预算，附近窗口准备在窗口之间检查 0.75 毫秒预算。
 
-### 定时（默认刷新间隔 0.25s，可配 0.1–2）
+预算在完整步骤或窗口处理后检查。单个原生窗口的同步 `Validate` 保持一次完整调用，因此单项处理耗时可能超过该预算。周期检查读取实际节点、物品、名称、类型、页面和尺寸，用于发现缺失通知及其他模组产生的变化。
 
-| 函数 | 位置 | 开销原因 |
-|---|---|---|
-| `RefreshSources` | `FlatStorageController.cs:399-436` | 定时全量同步总入口 |
-| `StorageDiscovery.Collect` | `StorageDiscovery.cs:21-96` | 递归 Emporium 图 + `visibleWindows`，再 `OrderBy` |
-| `WindowLease.Refresh`（可见） | `NativeAccess.cs:126-161` | `GetComponentsInChildren(true)` + `CaptureLayoutSizes` + `window.Validate()` + Tab 快照 |
-| `WindowLease.Refresh`（屏外） | `:128-133` | 已降到约 1s 只改布局，仍占定时循环 |
-| `ArrangementChanges.Observe` | `ArrangementChanges.cs:23-27` | 每 tick `OrderBy.ToArray` + `SequenceEqual` |
-| `CanvasTools.Refresh` | `CanvasTools.cs:80-102` | 新建 `StorageCatalog`、扫类型、`Filter`、小地图 `Refresh`；目录开着还可能 `BuildNavigation` |
-| `StorageCatalog` 构造 | `StorageCatalog.cs:25-43` | 对每个 source 再整树 `Visit` |
-| `Filter` → `SearchHighlights.Apply` | `CanvasTools.cs:112-121`、`StorageCatalog.cs:57-87` | 全物品匹配；有搜索时为每件物品建/改 4 条高亮边框 |
-| `CatalogItem.Matches` / `StorageSearch.Matches` | `StorageCatalog.cs:13-17`、`StorageSearch.cs:9-15` | 每件物品 `ToArray` / 多次 `IndexOf` |
-| 自动排列触发时 `ArrangeLayout` | `FlatStorageController.cs:537-548`、`StorageArrangement.cs:49+` | 相似度矩阵 O(n²)，再全体 `lease.Refresh` |
+## 可见性与 Canvas
 
-### 打开画布
+每个分组、固定工具栏和小地图使用独立 Canvas。分组的 Canvas 和 GraphicRaycaster 随可见状态开关，原生窗口节点保持有效。
 
-| 函数 | 位置 | 开销原因 |
-|---|---|---|
-| `Open` → `RefreshSources`（可能 `ArrangeLayout`）→ `Apply` | `FlatStorageController.cs:87-143` | 首次挂载全部窗口 |
-| `WindowLease` 构造 | `NativeAccess.cs:81-124` | 扫子树、禁用移动、`TryAddWindow`、`openCallback`、`Refresh` |
-| `CanvasTools` 构造 | `CanvasTools.cs:31-62` | 搜索框 / 下拉 / 小地图等 UI |
+`WindowSpatialIndex` 使用 512 个画布单位的空间单元定位候选窗口，跨越超过 64 个单元的分组单独记录。索引仅在分组位置、尺寸或集合变化时更新。
 
-### 拖放中 / 拖放后
+视口周围的进入、退出和准备范围分别为 64、160 和 320 个屏幕显示单位，并按缩放换算到画布坐标。窗口在准备范围内更新过期布局，进入显示范围前确保布局有效。不同的进入、退出范围减少边界往返引起的重复切换。
 
-| 函数 | 位置 | 开销原因 |
-|---|---|---|
-| `UpdateDrag`（拖中每帧） | `FlatStorageController.cs:469-474` | 预览缩放 + 反射刷新落点 |
-| `ValidateDrop` Prefix | `NativePatches.cs:310-328` | 原生落点核验（正确性必需） |
-| `RefreshNow`（自动入库执行后等） | `FlatStorageController.cs:518-523` | 立刻再走整套 `RefreshSources` |
-| `AutoStorage.Preview` / `Build` / `Execute` | `AutoStorage.cs`、`BulkTransfer.cs` | 按需尖刺，不在常驻帧循环 |
-| 树目录 `StorageTreeView.Build` | `StorageTreeView.cs:12-82` | 清容器重建行 + 两次 `Canvas.ForceUpdateCanvases` |
+子 Canvas 保留父级排序与遮罩关系。独立 Canvas 可以隔离 UI 更新范围；绘制批次数和实际收益需要结合具体存档测量。相关机制见 [Unity UI 优化说明](https://create.unity3d.com/Unity-UI-optimization-tips)。
 
----
+## 搜索、小地图与界面布局
 
-## 瓶颈 Top 5
+- 每个窗口维护可复用的物品目录。分类和搜索合并这些目录，物品名称和类型缓存随真实数据更新。
+- 搜索词在输入变化时规范化；空筛选直接使用目录列表并清理高亮。
+- 高亮只在匹配状态或物品尺寸变化时更新，保留物品原有透明度。
+- 小地图投影和分组标记按分组范围或小地图尺寸变化更新。普通平移与缩放只更新四条视口边框。
+- 容器树按标识符、所属关系和标签比较变化，布局重建限制在当前窗口。
+- 自动排列按标识符比较结构记录，交互结束后合并处理实际变化。
+- 状态文字、通知测量和 RectTransform 属性在数值变化时写入。
+- 每帧控制器委托、存档身份检查和拖动参数使用可复用状态，拖动预览仅在缩放需要调整时重新计算中心。
 
-1. **`WindowLease.Refresh`（`NativeAccess.cs:136-159`）**  
-   每个可见窗口每 0.25s 全子树 `GetComponentsInChildren` + `window.Validate()`（并牵动 `FlatTabsLayout` 对各 page 的 `Validate`，`NativePatches.cs:40`）。窗口 / 机器一多就是主 CPU 峰。
+## 构建与后续游戏验证
 
-2. **每帧多次 `RaycastAll`（`FlatStorageController.cs:284`，经 `Owns*` / Harmony / 框选遮挡）**  
-   同一指针一帧里被输入补丁和画布逻辑重复打；框选时还按物品次数放大。
+构建与安装命令：
 
-3. **`CanvasTools.Refresh` → `new StorageCatalog` + `Filter`（`CanvasTools.cs:80-99`，`StorageCatalog.cs:25-43`）**  
-   发现已经走过一遍图，刷新又整树扫物品；无搜索时仍建目录并跑 `Filter`。
-
-4. **`OwnsInventoryDropPointer`（`FlatStorageController.cs:225-240`）**  
-   在射线之外再线性扫全部 Tab 节点；拖放过程中被 `ValidateDrop` / 组拖结束频繁读取。
-
-5. **`ArrangementChanges.Observe` + 自动排列（`ArrangementChanges.cs:23-27`，`StorageArrangement.cs:70-72`）**  
-   每 tick 排序对比；一旦 `Pending`，全量 O(n²) 重排并再次 `Refresh` 全部 lease。
-
----
-
-## 修改建议（按收益 / 成本）
-
-### P0 · 脏标记驱动 Refresh
-
-- **改哪**：`WindowLease`、`RefreshSources`
-- **怎么改**：结构、尺寸、`childItems` 数量/引用变化，或从屏外唤醒时，才做 `GetComponentsInChildren` + `Validate`；平时只 `RefreshPlacement` / 轻量核对。物品增减、分页变化、打开/关闭窗口路径必须标脏。
-- **预期**：定时峰值下降约一个数量级。
-- **风险**：漏脏会导致页签 / 尺寸短暂不同步——唤醒与物品增减路径要测全。
-
-### P0 · 每帧只做一次 RaycastAll
-
-- **改哪**：`FlatStorageController`（`PointerHit` / `Owns*` / `SelectionRegionAt` / `PointerOnBlank`）
-- **怎么改**：增加 `frameHit`（帧号 + 缓存命中列表），同一帧指针未动则复用；Harmony 输入补丁走同一缓存入口。
-- **预期**：指针相关 CPU 砍到约 `1/N`。
-- **风险**：低。
-
-### P1 · 框选遮挡少打射线
-
-- **改哪**：`IsTopItemAt`、`CanvasSelectionOcclusion`
-- **怎么改**：同屏坐标缓存结果；或先用 lease 包围盒粗滤再射线。
-- **预期**：大范围框选更顺。
-- **风险**：中——遮挡语义要与原生一致，别误选被挡住的格。
-
-### P1 · 搜索目录与租赁刷新解耦
-
-- **改哪**：`CanvasTools.Refresh`、`StorageCatalog`、`SearchHighlights`
-- **怎么改**：无 query / category 时跳过 `new StorageCatalog` 与 `SearchHighlights.Apply`；有搜索再按间隔或物品脏重建。类型下拉可隔几拍或在脏时更新。
-- **预期**：无搜索时定时成本接近「发现 + 轻量 placement」。
-- **风险**：低；打开搜索瞬间可能有一帧尖刺。
-
-### P1 · lease / window 查找改字典
-
-- **改哪**：`RefreshSources`、`SelectionRegionAt`、`OwnsInventoryDropPointer`
-- **怎么改**：用 `Dictionary<PixelWindow, WindowLease>`（可复用 `WindowLease.Active`）替代 `FirstOrDefault` / `Any`。
-- **预期**：窗口多时线性扫描消失。
-- **风险**：极低。
-
-### P2 · 精简 OwnsInventoryDropPointer 的 Tab 探测
-
-- **改哪**：`OwnsInventoryDropPointer`
-- **怎么改**：先用单次射线命中判断是否在 plate / text 上，再查 `WindowLease.Tabs`；去掉每帧对所有 tabs 的嵌套 `Any`。
-- **预期**：拖放帧更稳。
-- **风险**：中——必须仍能点到分页标题落物。
-
-### P2 · ArrangementChanges 廉价签名
-
-- **改哪**：`ArrangementChanges.Observe`
-- **怎么改**：用「数量 + 拼接 id/parent/宽高」或递增 version，避免每 tick `OrderBy.ToArray` + `SequenceEqual`；自动排列保持用户开关。
-- **预期**：定时尾部变便宜，误触发全量 Arrange 减少。
-- **风险**：低；别漏掉归属变化。
-
-### P2 · StorageSearch.Matches 去掉热路径分配
-
-- **改哪**：`StorageSearch.Matches`、`CatalogItem.Matches`
-- **怎么改**：调用方传入已物化的类型列表 / 缓存，避免每件 `categories.ToArray()`。
-- **预期**：有搜索时 GC 与过滤更快。
-- **风险**：极低。
-
-### P2 · 小地图增量更新
-
-- **改哪**：`StorageMiniMap.UpdateView` / `Refresh`
-- **怎么改**：缓存投影；仅 view 变时动四边框，groups 不变不重建 `MiniMapProjection`。
-- **预期**：平移缩放更轻。
-- **风险**：低。
-
-### P3 · 树目录减负
-
-- **改哪**：`StorageTreeView.Build`、`CanvasTools.Signature`（现为 `JsonConvert.SerializeObject`，约 `:130-131`）
-- **怎么改**：去掉双次 `ForceUpdateCanvases`（必要时一次即可）；signature 改轻量字符串拼接。
-- **预期**：开着目录时刷新尖刺下降。
-- **风险**：低。
-
----
-
-## 不建议动的地方
-
-为正确性必须保留的成本，只能减调用频率，不能删逻辑或换成「猜位置」：
-
-- `BulkTransfer.Execute` / `MayMove` / `TryInventorySlot` / `TryAcceptOnce`：存档与容量语义核心
-- `ValidateDrop` / 组拖 `EndGroupDrag` 的原生落点核验：跨容器拖放安全阀
-- 可见窗口进入视口时的完整 `Refresh`（`Cull` waking）：否则页签平铺与机器 UI 会错
-- `FlatTabsLayout` 在真正需要重算时对 page 的 `Validate`：平铺尺寸依赖它
-- `RenderingTransfer.KeepWorldTransform` 与拖放预览缩放补丁：保证画布缩放下预览 / 落点正确
-- `AutoStorage` 执行前的 snapshot / `SameSteps` 重算：防并发改库存导致错搬（按需尖刺，非常驻帧）
-
----
-
-## 建议落地顺序
-
-1. P0 脏刷新 + 射线缓存（一起做，收益最大）
-2. P1 目录解耦 + 字典查找 + 框选粗滤
-3. P2 Tab 探测 / 排列签名 / 搜索分配 / 小地图增量
-4. P3 树目录
-5. 每步用大存档（多机器、多嵌套容器）对比：打开画布尖刺、空闲定时、拖放、框选、开着搜索与目录时的帧时
-
-验收时建议在 F8 控制台顺带跑一遍 `mod-scan`，并确认跨容器拖放与自动入库仍走原生插入路径。
-
-
----
-
-## Hook 替代定时刷新：对照表
-
-目标：**自己改库存 / 开窗 / 切场景时立刻标脏**；定时轮询降成「无脏几乎空跑」的兜底（建议默认 1–2s，或仅在 `dirty` 时才全量 `Validate`）。不要指望零定时——机器后台产出、其他模组改库存、原生 layout 晚一拍改尺寸，公开事件往往不全。
-
-脏位建议拆开，避免「随便一动就全员 Validate」：
-
-| 脏位 | 含义 | 典型处理 |
-|---|---|---|
-| `sourcesDirty` | 可见仓储集合可能变了 | 跑 `StorageDiscovery.Collect`，增删 lease |
-| `leaseDirty(window)` | 某窗页签 / 子树 / 尺寸可能变了 | 只对该 `WindowLease` 做完整 `Refresh` |
-| `catalogDirty` | 物品集合或搜索相关 | 有搜索/分类时才重建 `StorageCatalog` |
-| `arrangeDirty` | 结构或归属变了 | 用户开了自动排列才 `ArrangeLayout` |
-| `placementOnly` | 仅画布坐标 / Cull | 轻量 `RefreshPlacement`，不做 `Validate` |
-
-### 已有钩子 → 建议标脏
-
-| 现有入口 | 位置 | 建议动作 |
-|---|---|---|
-| `ModHook.OnGameLoadedInit` / `OnGameLoadedLate` | `ModEntry.cs` | 读档后 `sourcesDirty`；打开画布时再全量同步 |
-| `ModHook.OnAfterhourArriveEarly` / `OnAfterhourLeaveEarly` / `OnGoingSleepEarly` | `ModEntry.cs` | 已有关闭路径；关闭前按旧 `scene` 键 `Save`，清脏 |
-| `PlayerStore.SaveGame` Prefix | `NativePatches.cs` | 保持 `Save()`；不必为此全量 Refresh |
-| `PixelWindow.Show` Postfix | `NativePatches.cs` | 已有 `OpenedContainers.Remember`；再 `sourcesDirty` + 该窗 `leaseDirty`（或直接 `RefreshNow` 若画布开着） |
-| `PixelWindow.Hide` Prefix | `NativePatches.cs` | 租约窗被藏时 `sourcesDirty`，拆 lease |
-| `MachineryTabs.Validate` Prefix / `RefreshTabs` Postfix | `NativePatches.cs` | 租约内 Tab 变化 → 该窗 `leaseDirty`（这是页签平铺最关键的钩） |
-| `ItemMouseDragHandler.EndDrag` Prefix | `NativePatches.cs` | 放下成功路径后：源/目标窗 `leaseDirty`，`catalogDirty`；失败可不动 |
-| `ItemMultiSelectHandler.EndGroupDrag` Prefix | `NativeSelection.cs` | 同上，批量落点后标脏相关窗 |
-| `TreeNodeRender.SetParent` Postfix | `NativePatches.cs` | 画布内重挂接后，对应窗 `leaseDirty`（若仅世界变换则 `placementOnly`） |
-| 控制器内 `RefreshNow`（自动入库等） | `FlatStorageController.cs` | 改为「标脏 + 本帧或下一帧冲刷」，避免与定时刷新叠两次全量 |
-
-### 建议新增的钩子（优先 ModHook，不够再 Harmony）
-
-| 目标 | 钩法 | 标脏 | 说明 |
-|---|---|---|---|
-| 场景 / Travel 切换 | 已有 Leaving；若 SceneKey 会先变，在 `UpdateFrame` 检测到变化前先按旧键 Save | `sourcesDirty`，关画布 | 修布局丢失，顺便去掉「无事件只能盲等」 |
-| 分页被点选 | Harmony `MachineryTabs` 选中/切页方法（以反编译名为准），或 `RefreshTabs` 已够用则只加强 Postfix | 该窗 `leaseDirty` | 比 0.25s 轮询更快对齐平铺高度 |
-| 库存格子结构变化 | 若有 `GameGridInventory` / `GameSlotInventory` 的 add/remove/Validate 公开点，Postfix 标父窗 | `leaseDirty` + `catalogDirty` | 覆盖「非拖放」的塞取；没有稳定方法就别硬钩私有字段 |
-| 交易 UI 打开/关闭 | `OpenTrading` 成功/失败路径显式标脏，失败只关画布不 `enabled=false` | `sourcesDirty` | 交易窗进出集合会变 |
-| 自动入库 Preview/Execute | `AutoStorage` / `BulkTransfer` 结束 | 涉及窗 `leaseDirty` + `catalogDirty` | 已有 `RefreshNow`，改成脏冲刷即可 |
-| 搜索框 / 分类变更 | UI 回调 | 仅 `catalogDirty` | 与租赁刷新解耦 |
-
-找不到稳定方法时：**不要为了消灭定时去钩私有实现细节**；保留低频兜底更抗游戏小版本。
-
-### 定时器退居二线后的形态
-
-```text
-每帧 / 事件：
-  if dirty: FlushDirty()   // 按脏位做最小工作
-  Apply / Cull / 输入     // 仍每帧，但不 Validate
-
-每 N 秒（N≈1–2，可配置）：
-  if !anyDirty: 可选轻量「窗还在不在」核对，或直接 return
-  else: FlushDirty()
+```powershell
+dotnet build -c Release --no-restore
 ```
 
-验收要点：后台产出一格物品、打开嵌套容器、切机器页、跨容器拖放、自动入库后，画布与搜索高亮是否在一帧内跟上；大存档空闲时 CPU 应接近「几乎只有 Cull + 输入」。
+项目的 `InstallMod` 目标将程序集、清单及随附资源复制到游戏的 `Mods/ProbablyStolen_FlatStorage`。1.3.1 已通过 Release 构建和 58 项游戏外验证，检查覆盖 40 个 Harmony 目标，游戏 ModScanner 扫描为零发现。使用者于 2026-11-06 确认性能优化效果并批准发布。
+
+游戏验证使用相同真实存档、分辨率、缩放比例与布局，记录静止、平移、边界往返、缩放、物品拖放、框选和搜索场景的帧时间中位数、P95、P99、最长帧与 GC 指标。同步检查后台生产、数量变化、嵌套容器开关、分页标题落点和场景切换。
+
+实际性能收益、图形批处理成本与交互兼容性以游戏运行结果为依据。

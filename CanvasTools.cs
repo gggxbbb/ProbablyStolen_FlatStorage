@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using TMPro;
 using UnityEngine;
 
@@ -15,18 +14,22 @@ namespace ProbablyStolen_FlatStorage
         private readonly SearchHighlights highlights = new SearchHighlights();
         private readonly StorageMiniMap miniMap;
         private List<WindowLease> groups = new List<WindowLease>();
-        private StorageCatalog catalog;
+        private readonly StorageCatalog catalog = new StorageCatalog();
         private List<CatalogItem> matches = new List<CatalogItem>();
         private List<string> types = new List<string>();
         private string query = "", selectedType = "";
         private int selectedMatch = -1;
+        private GameItemElement selectedItem;
+        private bool? clearActive;
         private CustomUIWindow navigation, preview;
-        private string navigationSignature;
+        private bool navigationDirty = true;
+        private string matchStatus = "";
+        private readonly List<(string Id, string Parent, string OwnLabel, string Label)> navigationState = new List<(string, string, string, string)>();
         private readonly HashSet<string> collapsedContainers = new HashSet<string>(StringComparer.Ordinal);
         private AutoStoragePlan plan;
         internal bool HasDialog => navigation != null || preview != null;
         internal bool BlocksCanvasPointer => miniMap.ContainsPointer || category.dropdown.IsExpanded;
-        internal string MatchStatus => !string.IsNullOrWhiteSpace(query) || selectedType.Length != 0 ? ModText.Get("ui.matches", matches.Count) : "";
+        internal string MatchStatus => matchStatus;
 
         internal CanvasTools(FlatStorageController owner, CustomUIWindow window, TreeNodeRender bar, TreeNodeRender viewport)
         {
@@ -36,7 +39,7 @@ namespace ProbablyStolen_FlatStorage
             if (search.input.placeholder is TMP_Text placeholder) placeholder.text = ModText.Get("ui.search");
             search.input.characterLimit = 120;
             search.input.lineType = TMP_InputField.LineType.SingleLine;
-            search.input.onValueChanged.AddListener(value => owner.Run(() => { query = value; Filter(true); }));
+            search.input.onValueChanged.AddListener(value => owner.Run(() => { query = value.Trim(); Filter(true); }));
             search.input.onSubmit.AddListener(_ => owner.Run(FocusNext));
             category = FlatUI.Control(window, bar, CustomUIManager.ElementKind.Dropdown, "Item category");
             if (category.dropdown == null) throw new InvalidOperationException(ModText.Get("ui.component_missing", "TMP_Dropdown"));
@@ -80,8 +83,8 @@ namespace ProbablyStolen_FlatStorage
         internal void Refresh(IEnumerable<WindowLease> leases)
         {
             groups = leases.ToList();
-            catalog = new StorageCatalog(groups.Select(group => group.Source));
-            var updatedTypes = catalog.Items.SelectMany(item => item.Item.GetGameItemType()).Distinct()
+            catalog.Combine(groups);
+            var updatedTypes = catalog.Items.SelectMany(item => item.Types).Distinct()
                 .OrderBy(TypeHelper.GetTypeDisplayName, StringComparer.CurrentCulture).ToList();
             if (!types.SequenceEqual(updatedTypes))
             {
@@ -98,8 +101,11 @@ namespace ProbablyStolen_FlatStorage
                 category.dropdown.AddOptions(new List<string> { ModText.Get("ui.category") });
             Filter(false);
             miniMap.Refresh(groups, owner.ViewBounds);
-            if (navigation != null && navigationSignature != Signature()) BuildNavigation();
+            CheckNavigation();
+            if (navigation != null && navigationDirty) BuildNavigation();
         }
+
+        internal void GeometryChanged() => miniMap.InvalidateGeometry();
 
         internal void ResizeDialogs(float width, float height)
         {
@@ -111,37 +117,52 @@ namespace ProbablyStolen_FlatStorage
 
         private void Filter(bool reset)
         {
-            if (catalog == null) return;
-            var previous = selectedMatch >= 0 && selectedMatch < matches.Count ? matches[selectedMatch].Item : null;
-            matches = catalog.Items.Where(item => item.Matches(query, selectedType)).ToList();
-            selectedMatch = reset ? -1 : matches.FindIndex(item => item.Item == previous);
-            bool active = !string.IsNullOrWhiteSpace(query) || selectedType.Length != 0;
-            highlights.Apply(catalog, new HashSet<GameItemElement>(matches.Select(item => item.Item)), active);
-            FlatUI.ActiveButton(clear, active);
+            if (reset) selectedItem = null;
+            bool active = query.Length != 0 || selectedType.Length != 0;
+            matches = active ? catalog.Items.Where(item => item.Matches(query, selectedType)).ToList() : catalog.Items;
+            selectedMatch = selectedItem == null ? -1 : matches.FindIndex(item => item.Item == selectedItem);
+            if (selectedMatch < 0) selectedItem = null;
+            highlights.Apply(catalog, active ? new HashSet<GameItemElement>(matches.Select(item => item.Item)) : null, active);
+            matchStatus = active ? ModText.Get("ui.matches", matches.Count) : "";
+            if (clearActive != active) { clearActive = active; FlatUI.ActiveButton(clear, active); }
+            owner.InvalidatePointer();
         }
 
         private void FocusNext()
         {
             if (matches.Count == 0) { owner.Notice(ModText.Get("ui.no_matches")); return; }
             selectedMatch = (selectedMatch + 1) % matches.Count;
+            selectedItem = matches[selectedMatch].Item;
             owner.Focus(matches[selectedMatch]);
         }
 
-        private string Signature() => JsonConvert.SerializeObject(groups.Select(group => new[]
-            { group.Source.Id, group.Source.ParentId, group.Source.OwnLabel, group.Source.Label }));
+        private void CheckNavigation()
+        {
+            bool changed = navigationState.Count != groups.Count;
+            for (int i = 0; i < groups.Count && !changed; i++)
+            {
+                var source = groups[i].Source;
+                changed = navigationState[i] != (source.Id, source.ParentId, source.OwnLabel, source.Label);
+            }
+            if (!changed) return;
+            navigationDirty = true; navigationState.Clear();
+            foreach (var group in groups)
+                navigationState.Add((group.Source.Id, group.Source.ParentId, group.Source.OwnLabel, group.Source.Label));
+        }
 
         private void OpenNavigation()
         {
             CloseDialog(ref preview);
             if (navigation != null) { CloseDialog(ref navigation); return; }
             navigation = FlatUI.Window("navigation", ModText.Get("ui.navigate"), () => navigation = null);
+            owner.InvalidatePointer();
             FlatUI.FitScreen(navigation, .65f);
             BuildNavigation();
         }
 
         private void BuildNavigation()
         {
-            navigationSignature = Signature();
+            navigationDirty = false;
             collapsedContainers.IntersectWith(groups.Select(group => group.Source.Id));
             StorageTreeView.Build(navigation, groups, collapsedContainers,
                 id => owner.Run(() =>
@@ -165,6 +186,7 @@ namespace ProbablyStolen_FlatStorage
             CloseDialog(ref navigation); CloseDialog(ref preview);
             plan = AutoStorage.Preview(StorageDiscovery.Collect());
             preview = FlatUI.Window("storage", ModText.Get("ui.store_preview"), () => { preview = null; plan = null; });
+            owner.InvalidatePointer();
             FlatUI.FitScreen(preview, .75f);
             var builder = new CustomUIBuilder(CustomUIManager.Instance, preview);
             builder.AddLabel(ModText.Get("ui.store_summary", plan.PlannedUnits, plan.BlockedUnits));
@@ -208,6 +230,7 @@ namespace ProbablyStolen_FlatStorage
             var current = dialog; dialog = null;
             if (current == null) return;
             current.onClose = null; current.Close();
+            FlatStorageController.Current?.InvalidatePointer();
         }
 
         public void Dispose()

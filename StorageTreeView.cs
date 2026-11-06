@@ -62,7 +62,7 @@ namespace ProbablyStolen_FlatStorage
             builder.End();
             builder.AddButton(ModText.Get("ui.close"), close);
             CustomUIBuilder.RebuildLayout(window.ContentRoot);
-            Canvas.ForceUpdateCanvases();
+            window.ContentRoot.ForceUpdateRectTransforms();
             float requiredWidth = (rows.Count == 0 ? 0 : rows.Max(row => row.Depth) * indent) + arrowWidth + 90 * unit;
             float availableWidth = scroll.viewport.rect.width;
             bool overflow = requiredWidth > availableWidth;
@@ -74,7 +74,7 @@ namespace ProbablyStolen_FlatStorage
             list.pivot = new Vector2(0, 1);
             list.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, Math.Max(requiredWidth, availableWidth));
             CustomUIBuilder.RebuildLayout(window.ContentRoot);
-            Canvas.ForceUpdateCanvases();
+            window.ContentRoot.ForceUpdateRectTransforms();
             float maxX = Math.Max(0, list.rect.width - scroll.viewport.rect.width);
             float maxY = Math.Max(0, list.rect.height - scroll.viewport.rect.height);
             scroll.StopMovement();

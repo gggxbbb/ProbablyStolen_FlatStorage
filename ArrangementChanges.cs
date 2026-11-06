@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace ProbablyStolen_FlatStorage
 {
@@ -18,13 +17,19 @@ namespace ProbablyStolen_FlatStorage
 
     internal sealed class ArrangementChanges
     {
-        private ArrangementLocation[] previous = Array.Empty<ArrangementLocation>();
+        private Dictionary<string, ArrangementLocation> previous = new Dictionary<string, ArrangementLocation>(StringComparer.Ordinal);
+        private Dictionary<string, ArrangementLocation> current = new Dictionary<string, ArrangementLocation>(StringComparer.Ordinal);
         internal bool Pending { get; private set; }
         internal void Observe(IEnumerable<ArrangementLocation> locations)
         {
-            var current = locations.OrderBy(l => l.Id, StringComparer.Ordinal).ToArray();
-            if (!previous.SequenceEqual(current)) Pending = true;
-            previous = current;
+            current.Clear();
+            foreach (var location in locations)
+            {
+                current.Add(location.Id, location);
+                if (!previous.TryGetValue(location.Id, out var old) || !old.Equals(location)) Pending = true;
+            }
+            if (previous.Count != current.Count) Pending = true;
+            var buffer = previous; previous = current; current = buffer;
         }
         internal bool CanApply(bool enabled, bool dragging, bool panning) => enabled && Pending && !dragging && !panning;
         internal void Request() => Pending = true;

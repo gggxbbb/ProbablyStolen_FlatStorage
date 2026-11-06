@@ -15,11 +15,16 @@ namespace ProbablyStolen_FlatStorage
         private readonly List<RectTransform> edges = new List<RectTransform>();
         private MiniMapProjection projection;
         private List<WindowLease> groups = new List<WindowLease>();
+        private readonly List<Box> boxes = new List<Box>();
+        private bool geometryDirty = true, hasView;
+        private Box previousView;
+        private float projectedWidth, projectedHeight;
 
         internal StorageMiniMap(FlatStorageController owner, TreeNodeRender viewport)
         {
             this.owner = owner;
             frame = FlatUI.Panel(viewport, "Mini map border", FlatUI.Border);
+            FlatUI.IsolateCanvas(frame);
             surface = FlatUI.Panel(frame, "Mini map", FlatUI.Surface);
             var click = surface.gameObject.AddComponent<MiniMapClick>();
             click.Click = point => owner.Run(() =>
@@ -39,9 +44,17 @@ namespace ProbablyStolen_FlatStorage
             NativeAccess.Place(frame, Math.Max(0, width - mapWidth - 6), Math.Max(0, height - mapHeight - 6), mapWidth, mapHeight);
             NativeAccess.Place(surface, 1, 1, Math.Max(1, mapWidth - 2), Math.Max(1, mapHeight - 2));
             frame.rectTransform.SetAsLastSibling();
+            geometryDirty = true;
         }
 
-        internal void Visible(bool visible) => frame.gameObject.SetActive(visible);
+        internal void Visible(bool visible)
+        {
+            frame.gameObject.SetActive(visible);
+            hasView = false;
+            owner.InvalidatePointer();
+        }
+
+        internal void InvalidateGeometry() { geometryDirty = true; }
 
         internal void Refresh(IEnumerable<WindowLease> current, Box view)
         {
@@ -52,6 +65,7 @@ namespace ProbablyStolen_FlatStorage
                 marks[id].gameObject.SetActive(false);
                 UnityEngine.Object.Destroy(marks[id].gameObject);
                 marks.Remove(id);
+                geometryDirty = true;
             }
             foreach (var group in groups)
             {
@@ -62,6 +76,7 @@ namespace ProbablyStolen_FlatStorage
                 mark.gameObject.AddComponent<Button>().onClick.AddListener(() => owner.Run(() =>
                     owner.Focus(groups.First(destination => destination.Source.Id == id).Bounds)));
                 marks.Add(group.Source.Id, mark);
+                geometryDirty = true;
             }
             UpdateView(view);
         }
@@ -74,21 +89,31 @@ namespace ProbablyStolen_FlatStorage
                 foreach (var edge in edges) edge.gameObject.SetActive(false);
                 return;
             }
-            projection = new MiniMapProjection(groups.Select(group => group.Bounds).ToList(),
-                Math.Max(1, surface.rectTransform.rect.width), Math.Max(1, surface.rectTransform.rect.height));
-            foreach (var group in groups)
+            float width = Math.Max(1, surface.rectTransform.rect.width), height = Math.Max(1, surface.rectTransform.rect.height);
+            if (projectedWidth != width || projectedHeight != height) geometryDirty = true;
+            if (geometryDirty)
             {
-                Box box = projection.Project(group.Bounds);
-                FlatUI.Rect(marks[group.Source.Id], box.X, box.Y, Math.Max(1, box.Width), Math.Max(1, box.Height));
+                geometryDirty = false; hasView = false;
+                projectedWidth = width; projectedHeight = height;
+                boxes.Clear(); foreach (var group in groups) boxes.Add(group.Bounds);
+                projection = new MiniMapProjection(boxes, width, height);
+                foreach (var group in groups)
+                {
+                    Box box = projection.Project(group.Bounds);
+                    FlatUI.Rect(marks[group.Source.Id], box.X, box.Y, Math.Max(1, box.Width), Math.Max(1, box.Height));
+                }
+                foreach (var edge in edges) edge.SetAsLastSibling();
             }
+            if (hasView && WindowSpatialIndex.Same(view, previousView)) return;
+            previousView = view; hasView = true;
             Box visible = projection.Project(view);
             float x = Math.Max(0, visible.X), y = Math.Max(0, visible.Y);
             float right = Math.Min(surface.rectTransform.rect.width, visible.X + visible.Width);
             float bottom = Math.Min(surface.rectTransform.rect.height, visible.Y + visible.Height);
             foreach (var edge in edges)
             {
-                edge.gameObject.SetActive(right > x && bottom > y);
-                edge.SetAsLastSibling();
+                bool show = right > x && bottom > y;
+                if (edge.gameObject.activeSelf != show) edge.gameObject.SetActive(show);
             }
             if (right <= x || bottom <= y) return;
             FlatUI.Rect(edges[0], x, y, right - x, 1);

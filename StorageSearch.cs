@@ -9,10 +9,9 @@ namespace ProbablyStolen_FlatStorage
         internal static bool Matches(string name, string identifier, IEnumerable<string> categories,
             string query, string category)
         {
-            var types = categories.ToArray();
-            if (!string.IsNullOrEmpty(category) && !types.Contains(category, StringComparer.Ordinal)) return false;
+            if (!string.IsNullOrEmpty(category) && !categories.Contains(category, StringComparer.Ordinal)) return false;
             query = (query ?? "").Trim();
-            return query.Length == 0 || Contains(name, query) || Contains(identifier, query) || types.Any(t => Contains(t, query));
+            return query.Length == 0 || Contains(name, query) || Contains(identifier, query) || categories.Any(t => Contains(t, query));
         }
 
         private static bool Contains(string text, string query) =>

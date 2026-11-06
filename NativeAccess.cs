@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ProbablyStolen_FlatStorage
 {
@@ -15,6 +16,7 @@ namespace ProbablyStolen_FlatStorage
         internal static readonly FieldInfo TabUnderline = AccessTools.Field(typeof(MachineryTabs), "underline");
         internal static readonly MethodInfo Abort = AccessTools.Method(typeof(ItemMouseDragHandler), "AbortDrag");
         internal static readonly MethodInfo RefreshDrag = AccessTools.Method(typeof(ItemMouseDragHandler), "Drag");
+        private static readonly object[] dragArguments = { Vector3.zero };
 
         internal static void Check()
         {
@@ -39,15 +41,12 @@ namespace ProbablyStolen_FlatStorage
         internal static void RefreshDragTarget()
         {
             if (ItemMouseDragHandler.current != null && ItemMouseDragHandler.current.IsDraggingItem)
-                RefreshDrag.Invoke(ItemMouseDragHandler.current, new object[] { Vector3.zero });
+                RefreshDrag.Invoke(ItemMouseDragHandler.current, dragArguments);
         }
 
         internal static void Place(TreeNodeRender node, float x, float y, float width, float height)
         {
-            var rect = node.rectTransform;
-            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
-            rect.anchoredPosition = new Vector2(x, -y);
-            rect.sizeDelta = new Vector2(width, height);
+            FlatUI.Rect(node.rectTransform, x, y, width, height);
         }
     }
 
@@ -55,6 +54,9 @@ namespace ProbablyStolen_FlatStorage
     {
         internal static readonly Dictionary<PixelWindow, WindowLease> Active = new Dictionary<PixelWindow, WindowLease>();
         internal static readonly Dictionary<MachineryTabs, WindowLease> Tabs = new Dictionary<MachineryTabs, WindowLease>();
+        internal static readonly Dictionary<TreeNodeRender, WindowLease> Groups = new Dictionary<TreeNodeRender, WindowLease>();
+        private static readonly Dictionary<Transform, WindowLease> roots = new Dictionary<Transform, WindowLease>();
+        private static readonly Dictionary<Transform, MachineryTabs> tabTargets = new Dictionary<Transform, MachineryTabs>();
         public StorageSource Source;
         public readonly TreeNodeRender Group;
         public readonly TreeNodeRender Header;
@@ -70,8 +72,27 @@ namespace ProbablyStolen_FlatStorage
         private readonly Action closeCallback;
         private readonly Dictionary<MachineryTabs, TabSnapshot> selections = new Dictionary<MachineryTabs, TabSnapshot>();
         private readonly CanvasGroup visibility;
+        private readonly Canvas renderCanvas;
+        private readonly GraphicRaycaster raycaster;
         private readonly NativeLayoutSizes layoutSizes = new NativeLayoutSizes();
-        private float nextHiddenRefresh;
+        private readonly List<TreeNodeRender> nodes = new List<TreeNodeRender>();
+        private readonly List<MachineryTabs> removedTabs = new List<MachineryTabs>();
+        private readonly HashSet<GameInventory> subscriptions = new HashSet<GameInventory>();
+        private readonly List<GameInventory> removedInventories = new List<GameInventory>();
+        private readonly Dictionary<MachineryTabs, long> validatedTabs = new Dictionary<MachineryTabs, long>();
+        private readonly StorageSource[] scope;
+        private readonly Action<GameItem, GameInventory, SlotMarker> inventoryChanged;
+        private readonly Action<GameItem, GameInventory, SlotMarker> amountChanged;
+        internal StorageCatalog Catalog { get; private set; }
+        private bool structureDirty = true, layoutDirty = true, catalogDirty = true, disposed;
+        private int validationDepth;
+        private long revision;
+        private Box placed;
+        private string placedLabel;
+        internal bool NeedsLayout => structureDirty || layoutDirty;
+        internal bool NeedsCatalog => catalogDirty;
+        internal bool IsAvailable => !disposed && Source.Window.handler != null && !Source.Window.isLocked &&
+            !(Source.Owner is GameItemElement item && item.IsDestroyed());
         internal bool IsVisibleInViewport { get; private set; } = true;
         internal bool OriginallyVisible => visible;
         public float Width => Math.Max(1, Source.Window.widthPixels);
@@ -81,6 +102,9 @@ namespace ProbablyStolen_FlatStorage
         public WindowLease(StorageSource source, TreeNodeRender canvas, GroupPosition position)
         {
             Source = source; Position = position;
+            scope = new[] { source };
+            inventoryChanged = OnInventoryChanged;
+            amountChanged = (item, inventory, slot) => MarkDirty(false, false);
             var window = source.Window;
             var rect = window.rectTransform;
             parent = window.handler.parent; transformParent = rect.parent;
@@ -104,7 +128,11 @@ namespace ProbablyStolen_FlatStorage
                 return true;
             });
             visibility = Group.gameObject.AddComponent<CanvasGroup>();
+            renderCanvas = FlatUI.IsolateCanvas(Group);
+            raycaster = Group.GetComponent<GraphicRaycaster>();
             Active.Add(window, this);
+            Groups.Add(Group, this);
+            roots.Add(Group.transform, this);
             try
             {
                 NativeAccess.CanMove.SetValue(window, false);
@@ -115,6 +143,7 @@ namespace ProbablyStolen_FlatStorage
                 WindowsHandler.TryAddWindow(window);
                 window.openCallback?.Invoke();
                 Refresh();
+                RefreshCatalog();
             }
             catch
             {
@@ -123,30 +152,82 @@ namespace ProbablyStolen_FlatStorage
             }
         }
 
-        public void Refresh()
+        internal static WindowLease Find(Transform transform)
         {
-            if (!IsVisibleInViewport)
-            {
-                if (Time.unscaledTime < nextHiddenRefresh) return;
-                nextHiddenRefresh = Time.unscaledTime + 1;
-                RefreshPlacement();
-                return;
-            }
+            for (var current = transform; current != null; current = current.parent)
+                if (roots.TryGetValue(current, out var lease)) return lease;
+            return null;
+        }
+
+        internal static MachineryTabs FindTabTarget(Transform transform)
+        {
+            for (var current = transform; current != null; current = current.parent)
+                if (tabTargets.TryGetValue(current, out var tabs)) return tabs;
+            return null;
+        }
+
+        internal void MarkDirty(bool structure = false, bool layout = true)
+        {
+            if (disposed) return;
+            structureDirty |= structure; layoutDirty |= layout; catalogDirty = true;
+            revision++;
+            FlatStorageController.Current?.QueueRefresh(this);
+        }
+
+        private void OnInventoryChanged(GameItem item, GameInventory inventory, SlotMarker slot)
+        {
+            MarkDirty();
+            if (item.contentWindow != null) FlatStorageController.Current?.RequestSources();
+        }
+
+        internal void BeginValidation()
+        {
+            if (validationDepth++ == 0) validatedTabs.Clear();
+        }
+
+        internal void EndValidation()
+        {
+            validationDepth--;
+            if (validationDepth == 0) RefreshPlacement();
+        }
+
+        internal void AbortValidation() { validationDepth = 0; validatedTabs.Clear(); }
+
+        internal bool WasValidated(MachineryTabs tabs) => validationDepth > 0 &&
+            validatedTabs.TryGetValue(tabs, out long version) && version == revision;
+        internal long Revision => revision;
+        internal void Validated(MachineryTabs tabs, long version)
+        {
+            if (validationDepth > 0) validatedTabs[tabs] = version;
+        }
+
+        public void Refresh(bool prepare = false)
+        {
+            if (!IsAvailable || !IsVisibleInViewport && !prepare) return;
             var window = Source.Window;
-            var nodes = window.handler.GetComponentsInChildren<TreeNodeRender>(true);
+            bool scan = structureDirty, validate = layoutDirty || scan;
+            structureDirty = layoutDirty = false;
+            if (scan) ScanHierarchy();
+            if (validate) window.Validate();
+            RefreshPlacement();
+        }
+
+        private void ScanHierarchy()
+        {
+            var window = Source.Window;
+            nodes.Clear(); window.handler.GetComponentsInChildren(true, nodes);
+            foreach (var node in nodes)
+                if (node.element is MachineryTabs transferred && Tabs.TryGetValue(transferred, out var previous) && previous != this)
+                    previous.ReleaseTab(transferred);
             CaptureLayoutSizes(nodes);
-            foreach (var tabs in new List<MachineryTabs>(selections.Keys))
+            removedTabs.Clear();
+            foreach (var tabs in selections.Keys)
             {
                 if (tabs.handler != null && tabs.handler.transform.IsChildOf(window.handler.transform)) continue;
-                Tabs.Remove(tabs);
-                if (tabs.handler != null)
-                {
-                    layoutSizes.Restore(tabs);
-                    selections[tabs].Restore(tabs);
-                    tabs.Validate();
-                }
-                selections.Remove(tabs);
+                removedTabs.Add(tabs);
             }
+            foreach (var tabs in removedTabs)
+                ReleaseTab(tabs);
             foreach (var node in nodes)
             {
                 if (node.element is MachineryTabs tabs && !selections.ContainsKey(tabs))
@@ -156,38 +237,95 @@ namespace ProbablyStolen_FlatStorage
                 }
             }
             foreach (var pair in selections) pair.Value.Capture(pair.Key);
-            window.Validate();
-            RefreshPlacement();
         }
 
         internal void CaptureTabState(MachineryTabs tabs) => selections[tabs].Capture(tabs);
 
-        private void RefreshPlacement()
+        private void ReleaseTab(MachineryTabs tabs)
         {
+            var snapshot = selections[tabs];
+            snapshot.RemoveTargets(); Tabs.Remove(tabs); selections.Remove(tabs);
+            if (tabs.handler != null)
+            {
+                layoutSizes.Restore(tabs);
+                snapshot.Restore(tabs);
+                tabs.Validate();
+            }
+            MarkDirty(true);
+        }
+
+        internal bool RefreshCatalog()
+        {
+            if (!IsAvailable) return false;
+            catalogDirty = false;
+            bool first = Catalog == null;
+            bool changed;
+            if (Catalog == null) { Catalog = new StorageCatalog(scope); changed = true; }
+            else changed = Catalog.Refresh(scope);
+            removedInventories.Clear();
+            foreach (var inventory in subscriptions)
+                if (!Catalog.ContainsInventory(inventory)) removedInventories.Add(inventory);
+            foreach (var inventory in removedInventories) Unsubscribe(inventory);
+            foreach (var inventory in Catalog.Inventories)
+            {
+                if (!subscriptions.Add(inventory)) continue;
+                inventory.onSlotAddItemLateFunc += inventoryChanged;
+                inventory.onSlotRemoveItemLateFunc += inventoryChanged;
+                inventory.onSlotChangeAmountItemFunc += amountChanged;
+            }
+            if (!first && Catalog.StructureChanged) MarkDirty(true);
+            else if (!first && Catalog.LayoutChanged) MarkDirty(false);
+            if (changed) FlatStorageController.Current?.CatalogChanged();
+            return changed;
+        }
+
+        internal void Observe()
+        {
+            if (!IsAvailable) { SetVisible(false); FlatStorageController.Current?.RequestSources(); return; }
+            RefreshCatalog();
+            foreach (var pair in selections)
+                if (pair.Value.HasChanged(pair.Key)) { MarkDirty(true); break; }
+            RefreshPlacement();
+        }
+
+        internal void RefreshPlacement()
+        {
+            if (disposed || Source.Window.handler == null) return;
             var window = Source.Window;
+            var box = Bounds;
+            if (WindowSpatialIndex.Same(placed, box) && placedLabel == Source.Label) return;
+            bool geometry = !WindowSpatialIndex.Same(placed, box);
+            placed = box; placedLabel = Source.Label;
             Label.text.text = Source.Label;
             NativeAccess.Place(window.handler, 0, 20, window.widthPixels, window.heightPixels);
             NativeAccess.Place(Group, Position.X, Position.Y, Width, Height);
             NativeAccess.Place(Header, 0, 0, Width, 18);
             NativeAccess.Place(Label, 5, 0, Math.Max(0, Width - 10), 18);
+            if (geometry) FlatStorageController.Current?.GeometryChanged(this);
         }
 
-        public void Cull(Box viewport)
+        internal void SetVisible(bool show)
         {
-            bool show = Bounds.Intersects(viewport);
-            bool waking = show && !IsVisibleInViewport;
+            if (show && !IsAvailable) return;
+            if (show == IsVisibleInViewport) return;
+            if (show) Refresh(true);
             IsVisibleInViewport = show;
-            if (waking) Refresh();
             visibility.alpha = show ? 1 : 0;
             visibility.blocksRaycasts = show;
             visibility.interactable = show;
+            renderCanvas.enabled = show;
+            raycaster.enabled = show;
+            FlatStorageController.Current?.InvalidatePointer();
         }
 
         public void Dispose()
         {
             var window = Source.Window;
+            disposed = true;
+            foreach (var inventory in new List<GameInventory>(subscriptions)) Unsubscribe(inventory);
+            Groups.Remove(Group); roots.Remove(Group.transform);
             Active.Remove(window);
-            foreach (var pair in selections) Tabs.Remove(pair.Key);
+            foreach (var pair in selections) { pair.Value.RemoveTargets(); Tabs.Remove(pair.Key); }
             if (window.handler != null)
             {
                 layoutSizes.Restore();
@@ -208,6 +346,14 @@ namespace ProbablyStolen_FlatStorage
             if (Group != null) UnityEngine.Object.Destroy(Group.gameObject);
         }
 
+        private void Unsubscribe(GameInventory inventory)
+        {
+            inventory.onSlotAddItemLateFunc -= inventoryChanged;
+            inventory.onSlotRemoveItemLateFunc -= inventoryChanged;
+            inventory.onSlotChangeAmountItemFunc -= amountChanged;
+            subscriptions.Remove(inventory);
+        }
+
         private void RestoreRect(RectTransform rect)
         {
             rect.SetParent(transformParent, false);
@@ -216,7 +362,7 @@ namespace ProbablyStolen_FlatStorage
             rect.SetSiblingIndex(sibling);
         }
 
-        private void CaptureLayoutSizes(TreeNodeRender[] nodes)
+        private void CaptureLayoutSizes(IEnumerable<TreeNodeRender> nodes)
         {
             layoutSizes.Capture(Source.Window);
             foreach (var node in nodes)
@@ -230,6 +376,11 @@ namespace ProbablyStolen_FlatStorage
             private readonly Dictionary<GameObject, bool> stripVisibility = new Dictionary<GameObject, bool>();
             private readonly Dictionary<TreeNodeRender, (TMPro.TextOverflowModes Overflow, bool Wrapping)> textStyles =
                 new Dictionary<TreeNodeRender, (TMPro.TextOverflowModes, bool)>();
+            private readonly List<Transform> targets = new List<Transform>();
+            private readonly List<PixelElement> pages = new List<PixelElement>();
+            private readonly List<string> captions = new List<string>();
+            private readonly List<(int Width, int Height, bool Hidden)> pageSizes = new List<(int, int, bool)>();
+            private int capturedChildren = -1;
 
             public TabSnapshot(MachineryTabs tabs)
             {
@@ -241,13 +392,40 @@ namespace ProbablyStolen_FlatStorage
             public void Capture(MachineryTabs tabs)
             {
                 var strip = (TreeNodeRender)NativeAccess.TabStrip.GetValue(tabs);
+                if (capturedChildren == strip.transform.childCount && !HasChanged(tabs)) return;
+                capturedChildren = strip.transform.childCount;
+                RemoveTargets(); pages.Clear(); captions.Clear(); pageSizes.Clear();
                 foreach (Transform child in strip.transform)
                     if (!stripVisibility.ContainsKey(child.gameObject)) stripVisibility.Add(child.gameObject, child.gameObject.activeSelf);
                 for (int i = 0; i < tabs.count; i++)
                 {
                     var text = NativeTabsAccess.Get(tabs, i).Text;
                     if (!textStyles.ContainsKey(text)) textStyles.Add(text, (text.text.overflowMode, text.text.enableWordWrapping));
+                    var nodes = NativeTabsAccess.Get(tabs, i);
+                    targets.Add(nodes.Plate.transform); targets.Add(nodes.Text.transform);
+                    tabTargets[nodes.Plate.transform] = tabs; tabTargets[nodes.Text.transform] = tabs;
+                    pages.Add(nodes.Page); captions.Add(tabs.GetCaption(i));
+                    pageSizes.Add((nodes.Page?.widthPixels ?? 0, nodes.Page?.heightPixels ?? 0,
+                        nodes.Page is MachineryPanel panel && panel.isHidden));
                 }
+            }
+
+            internal bool HasChanged(MachineryTabs tabs)
+            {
+                if (pages.Count != tabs.count) return true;
+                for (int i = 0; i < pages.Count; i++)
+                {
+                    var page = tabs.GetPage(i);
+                    if (page != pages[i] || captions[i] != tabs.GetCaption(i) ||
+                        pageSizes[i] != (page?.widthPixels ?? 0, page?.heightPixels ?? 0, page is MachineryPanel panel && panel.isHidden)) return true;
+                }
+                return false;
+            }
+
+            internal void RemoveTargets()
+            {
+                foreach (var target in targets) tabTargets.Remove(target);
+                targets.Clear();
             }
 
             public void Restore(MachineryTabs tabs)

@@ -41,9 +41,25 @@ namespace ProbablyStolen_FlatStorage
 
         internal static void Rect(RectTransform rect, float x, float y, float width, float height)
         {
-            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
-            rect.anchoredPosition = new Vector2(x, -y);
-            rect.sizeDelta = new Vector2(width, height);
+            var anchor = new Vector2(0, 1);
+            if (rect.anchorMin != anchor) rect.anchorMin = anchor;
+            if (rect.anchorMax != anchor) rect.anchorMax = anchor;
+            if (rect.pivot != anchor) rect.pivot = anchor;
+            var position = new Vector2(x, -y);
+            var size = new Vector2(width, height);
+            if (rect.anchoredPosition != position) rect.anchoredPosition = position;
+            if (rect.sizeDelta != size) rect.sizeDelta = size;
+        }
+
+        internal static Canvas IsolateCanvas(TreeNodeRender node)
+        {
+            var parent = node.GetComponentInParent<Canvas>();
+            var canvas = node.gameObject.AddComponent<Canvas>();
+            canvas.overrideSorting = false;
+            if (parent != null) canvas.additionalShaderChannels = parent.additionalShaderChannels;
+            var raycaster = node.gameObject.AddComponent<GraphicRaycaster>();
+            raycaster.blockingObjects = GraphicRaycaster.BlockingObjects.None;
+            return canvas;
         }
 
         internal static void ManualLayout(RectTransform rect)
@@ -60,7 +76,8 @@ namespace ProbablyStolen_FlatStorage
             window.Rect.anchorMin = window.Rect.anchorMax = window.Rect.pivot = new Vector2(.5f, .5f);
             window.SetPosition((top + bottom) / 2 - parent.rect.center);
             window.SetSize(Math.Abs(bottom.x - top.x) * fraction, Math.Abs(top.y - bottom.y) * fraction);
-            Canvas.ForceUpdateCanvases();
+            window.Rect.ForceUpdateRectTransforms();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(window.Rect);
         }
 
         internal static CustomUIElement Control(CustomUIWindow window, TreeNodeRender parent,

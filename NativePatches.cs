@@ -14,7 +14,9 @@ namespace ProbablyStolen_FlatStorage
         private static bool Prefix(MachineryTabs __instance)
         {
             if (!WindowLease.Tabs.TryGetValue(__instance, out var lease)) return true;
+            if (lease.WasValidated(__instance)) return false;
             if (!validating.Add(__instance)) return false;
+            long revision = lease.Revision;
             try
             {
                 lease.CaptureTabState(__instance);
@@ -54,6 +56,7 @@ namespace ProbablyStolen_FlatStorage
                 NativeAccess.Place(underline, 0, 13, totalWidth, 1);
                 NativeAccess.Place(__instance.inner, 0, 16, totalWidth, height);
                 __instance.rectTransform.sizeDelta = new Vector2(totalWidth, totalHeight);
+                lease.Validated(__instance, revision);
                 return false;
             }
             finally { validating.Remove(__instance); }
@@ -121,7 +124,8 @@ namespace ProbablyStolen_FlatStorage
     [HarmonyPatch(typeof(PixelWindow), nameof(PixelWindow.Show), new System.Type[0])]
     internal static class FlatWindowShow
     {
-        private static void Postfix(PixelWindow __instance) => OpenedContainers.Remember(__instance);
+        private static void Postfix(PixelWindow __instance)
+        { OpenedContainers.Remember(__instance); FlatStorageController.Current?.RequestSources(); FlatStorageController.Current?.InvalidatePointer(); }
 
         private static bool Prefix(PixelWindow __instance, ref PixelWindow __result)
         {
@@ -134,7 +138,8 @@ namespace ProbablyStolen_FlatStorage
     [HarmonyPatch(typeof(PixelWindow), nameof(PixelWindow.Show), typeof(Vector2), typeof(Vector2), typeof(bool))]
     internal static class FlatWindowShowAt
     {
-        private static void Postfix(PixelWindow __instance) => OpenedContainers.Remember(__instance);
+        private static void Postfix(PixelWindow __instance)
+        { OpenedContainers.Remember(__instance); FlatStorageController.Current?.RequestSources(); FlatStorageController.Current?.InvalidatePointer(); }
 
         private static bool Prefix(PixelWindow __instance, ref PixelWindow __result)
         {
@@ -170,6 +175,7 @@ namespace ProbablyStolen_FlatStorage
             __state = null;
             var controller = FlatStorageController.Current;
             if (controller == null || (!controller.IsOpen && controller.EscapeFrame != Time.frameCount)) return;
+            if (keysPressed.Count == 0) { CanvasInventoryHover.Enter(__instance, out __state); return; }
             keysPressed = new HashSet<KeyCode>(keysPressed);
             if (controller.EscapeFrame == Time.frameCount) keysPressed.Remove(KeyCode.Escape);
             if (!controller.IsOpen) return;
@@ -190,8 +196,9 @@ namespace ProbablyStolen_FlatStorage
     {
         private static bool Prefix()
         {
+            if (Input.mouseScrollDelta == Vector2.zero) return true;
             var c = FlatStorageController.Current;
-            return c == null || !c.PointerInViewport || !c.OwnsPointer() || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            return c == null || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) || !c.PointerInViewport || !c.OwnsPointer();
         }
     }
 
@@ -201,6 +208,7 @@ namespace ProbablyStolen_FlatStorage
         private static bool Prefix() => FlatStorageController.Current == null || !FlatStorageController.Current.PointerInViewport ||
             !FlatStorageController.Current.OwnsPointer() ||
             Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        private static void Postfix() => FlatStorageController.Current?.InvalidatePointer();
     }
 
     [HarmonyPatch(typeof(TreeNodeRender), nameof(TreeNodeRender.OnPointerClick))]
@@ -216,16 +224,28 @@ namespace ProbablyStolen_FlatStorage
     [HarmonyPatch(typeof(TreeNodeRender), nameof(TreeNodeRender.SetParent), typeof(TreeNodeRender), typeof(bool))]
     internal static class PreserveInventoryItemScale
     {
-        private static void Prefix(TreeNodeRender __instance, TreeNodeRender parent, ref bool worldPositionStays)
+        private static void Prefix(TreeNodeRender __instance, TreeNodeRender parent, ref bool worldPositionStays, out WindowLease __state)
         {
+            __state = FlatStorageController.Current?.IsOpen == true && __instance.element != null ? WindowLease.Find(__instance.transform) : null;
             if (!(__instance.element is GameItemElement item) || item.handler != __instance) return;
             // 物品通过临时父节点转移时保留局部变换，缩放由目标容器继承。
             worldPositionStays = RenderingTransfer.KeepWorldTransform(worldPositionStays, true,
                 FlatDragOwnership.Owns(item), parent == RenderHandler.current.tempRoot);
         }
 
-        private static void Postfix(TreeNodeRender __instance)
+        private static void Postfix(TreeNodeRender __instance, WindowLease __state)
         {
+            var controller = FlatStorageController.Current;
+            if (controller?.IsOpen == true)
+            {
+                controller.InvalidatePointer();
+                if (__instance.element != null && !(__instance.element is GameItem))
+                {
+                    var lease = WindowLease.Find(__instance.transform);
+                    __state?.MarkDirty(true);
+                    if (lease != __state) lease?.MarkDirty(true);
+                }
+            }
             if (__instance.element is GameItemElement item && item.handler == __instance && FlatDragOwnership.Owns(item))
                 __instance.rectTransform.localScale = Vector3.one;
         }

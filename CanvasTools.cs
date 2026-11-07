@@ -117,6 +117,7 @@ namespace ProbablyStolen_FlatStorage
 
         private void Filter(bool reset)
         {
+            if (reset) PerformanceMonitor.Active?.Event("search", "length=" + query.Length + ";category=" + selectedType);
             if (reset) selectedItem = null;
             bool active = query.Length != 0 || selectedType.Length != 0;
             matches = active ? catalog.Items.Where(item => item.Matches(query, selectedType)).ToList() : catalog.Items;
@@ -152,6 +153,7 @@ namespace ProbablyStolen_FlatStorage
 
         private void OpenNavigation()
         {
+            PerformanceMonitor.Active?.Event("container-directory");
             CloseDialog(ref preview);
             if (navigation != null) { CloseDialog(ref navigation); return; }
             navigation = FlatUI.Window("navigation", ModText.Get("ui.navigate"), () => navigation = null);
@@ -182,6 +184,7 @@ namespace ProbablyStolen_FlatStorage
 
         private void OpenPreview()
         {
+            PerformanceMonitor.Active?.Event("auto-storage-preview");
             NativeAccess.CancelDrag();
             CloseDialog(ref navigation); CloseDialog(ref preview);
             plan = AutoStorage.Preview(StorageDiscovery.Collect());
@@ -210,6 +213,7 @@ namespace ProbablyStolen_FlatStorage
 
         private void Execute()
         {
+            PerformanceMonitor.Active?.Event("auto-storage-execute");
             var result = plan.Execute(StorageDiscovery.Collect());
             CloseDialog(ref preview);
             owner.Notice(ModText.Get("ui.store_done", result.MovedUnits) +

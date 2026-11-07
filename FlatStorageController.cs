@@ -16,7 +16,7 @@ namespace ProbablyStolen_FlatStorage
         internal bool MovingGroup => moving != null;
         internal int EscapeFrame { get; private set; } = -1;
         internal int PanReleaseFrame { get; private set; } = -1;
-        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel, automaticButton, errorLabel;
+        private TreeNodeRender entry, root, viewport, content, toolbar, status, automaticLabel, automaticButton, errorLabel, performanceButton;
         private TreeNodeRender noticePanel, noticeText;
         private CustomUIWindow window;
         private CanvasTools tools;
@@ -109,6 +109,7 @@ namespace ProbablyStolen_FlatStorage
         private void Open()
         {
             if (IsOpen || PlayerStore.Instance == null || SaveManager.IsDecoding) return;
+            PerformanceMonitor.Active?.Event("storage-open");
             NativeAccess.CancelDrag();
             scene = StorageDiscovery.SceneKey;
             saveRun = PlayerStore.Instance.runID; saveSlot = PlayerStore.Instance.saveSlotId;
@@ -142,6 +143,8 @@ namespace ProbablyStolen_FlatStorage
             automaticButton = AddButton(ModText.Get(state.AutoArrange ? "ui.auto_on" : "ui.auto_off"), 86, ToggleAutomatic);
             automaticLabel = automaticButton.GetComponentsInChildren<TreeNodeRender>().First(n => n.text != null);
             FlatUI.ActiveButton(automaticButton, state.AutoArrange);
+            performanceButton = AddButton(ModText.Get("perf.title"), 64, PerformanceMonitor.TogglePanel);
+            PerformanceChanged();
             AddButton(ModText.Get("ui.close"), 36, Close);
             status = FlatUI.Text(toolbar, "", 7);
             status.text.color = FlatUI.Muted;
@@ -191,6 +194,7 @@ namespace ProbablyStolen_FlatStorage
         internal void CloseWithoutSave()
         {
             if (!IsOpen) return;
+            PerformanceMonitor.Active?.Event("storage-close");
             NativeAccess.CancelDrag();
             IsOpen = false;
             discovery?.Dispose(); discovery = null; discovered.Clear();
@@ -210,6 +214,41 @@ namespace ProbablyStolen_FlatStorage
             else if (root != null) Destroy(root.gameObject);
             if (entry != null) entry.gameObject.SetActive(true);
             root = null;
+            performanceButton = null;
+        }
+
+        internal string PerformanceScene => scene;
+        internal void PerformanceChanged()
+        {
+            if (performanceButton == null) return;
+            bool recording = PerformanceMonitor.Current?.IsRecording == true;
+            FlatUI.ActiveButton(performanceButton, recording);
+            performanceButton.GetComponentInChildren<TMPro.TMP_Text>().text = ModText.Get(recording ? "perf.recording" : "perf.title");
+        }
+
+        internal PerfContext PerformanceContext()
+        {
+            var operations = IsOpen ? PerfOperation.StorageOpen : PerfOperation.None;
+            if (Panning) operations |= PerfOperation.Pan;
+            if (MovingGroup) operations |= PerfOperation.GroupDrag;
+            if (IsItemDragging) operations |= PerfOperation.ItemDrag;
+            if (NativeSelection.IsBanding) operations |= PerfOperation.Selection;
+            if (StoreUIManager.IsAnyTyping()) operations |= PerfOperation.Typing;
+            return new PerfContext { Operations = operations, PanX = state?.PanX ?? 0, PanY = state?.PanY ?? 0,
+                Zoom = state?.Zoom ?? 1, Windows = leases.Count, VisibleWindows = visibleLeases.Count,
+                RefreshQueue = refreshQueue.Count, Nearby = nearby.Count };
+        }
+
+        internal void SamplePerformanceGeometry(out int items, out int graphics, out int raycastGraphics)
+        {
+            items = graphics = raycastGraphics = 0;
+            foreach (var lease in leases)
+            {
+                items += lease.Catalog?.Items.Count ?? 0;
+                if (!lease.IsVisibleInViewport || !lease.IsAvailable) continue;
+                graphics += lease.PerformanceGraphics;
+                raycastGraphics += lease.PerformanceRaycastGraphics;
+            }
         }
 
         internal void Save()
@@ -391,10 +430,11 @@ namespace ProbablyStolen_FlatStorage
             {
                 if (NativeSelection.IsBanding) ItemMultiSelectHandler.current?.Cancel();
                 Panning = true; moving = null; lastPointer = pointer;
+                PerformanceMonitor.Active?.Event("pan-begin");
             }
             if (Panning)
             {
-                if (!panKey) { Panning = false; RightPanning = false; PanReleaseFrame = Time.frameCount; Save(); }
+                if (!panKey) { Panning = false; RightPanning = false; PanReleaseFrame = Time.frameCount; PerformanceMonitor.Active?.Event("pan-end"); Save(); }
                 else { var delta = pointer - lastPointer; state.PanX += delta.x; state.PanY += delta.y; }
             }
             if (moving != null)
@@ -409,7 +449,11 @@ namespace ProbablyStolen_FlatStorage
             }
             lastPointer = pointer;
             if (canPan && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl) && Input.mouseScrollDelta.y != 0)
-            { state.ZoomAt(pointer.x, pointer.y, state.Zoom * Mathf.Pow(1.12f, Input.mouseScrollDelta.y)); Save(); }
+            {
+                state.ZoomAt(pointer.x, pointer.y, state.Zoom * Mathf.Pow(1.12f, Input.mouseScrollDelta.y));
+                PerformanceMonitor.Active?.Event("zoom", state.Zoom.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                Save();
+            }
             if (IsItemDragging && !Panning && !tools.BlocksCanvasPointer && PointerInViewport && OwnsPointer())
             {
                 const float edge = 18;

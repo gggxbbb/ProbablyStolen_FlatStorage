@@ -15,6 +15,12 @@ AssemblyLoadContext.Default.Resolving += (_, name) =>
 };
 var tests = new (string Name, Action Run)[]
 {
+    ("性能记录真实时钟与嵌套计时", PerformanceChecks.Timing),
+    ("性能记录容量与完整性", PerformanceChecks.Capacity),
+    ("性能记录异常作用域释放", PerformanceChecks.ExceptionScopes),
+    ("性能记录真实文件导出与读取", () => PerformanceChecks.Export(workspace)),
+    ("性能记录部分帧与百分位", PerformanceChecks.Statistics),
+    ("性能采样目标实际程序集", () => PerformanceChecks.NativeTargets(workspace)),
     ("真实清单与游戏兼容版本", () => GameVersionChecks.Manifest(workspace, managed)),
     ("自动排列开关默认值与存档往返", () =>
     {

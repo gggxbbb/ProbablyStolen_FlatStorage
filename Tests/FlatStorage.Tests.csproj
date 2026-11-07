@@ -6,6 +6,9 @@
     <ManagedDir>$(MSBuildProjectDirectory)\..\..\..\Probably Stolen_Data\Managed</ManagedDir>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\PerformanceCapture.cs" Link="PerformanceCapture.cs" />
+    <Compile Include="..\PerformanceExport.cs" Link="PerformanceExport.cs" />
+    <EmbeddedResource Include="..\Resources\performance-report.html" LogicalName="FlatStorage.PerformanceReport" />
     <Compile Include="..\CanvasModel.cs" Link="CanvasModel.cs" />
     <Compile Include="..\StorageVisibility.cs" Link="StorageVisibility.cs" />
     <Compile Include="..\StorageLabels.cs" Link="StorageLabels.cs" />

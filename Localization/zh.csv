@@ -1,4 +1,43 @@
 app.name,扁平存储
+perf.title,性能分析
+perf.start,开始记录
+perf.stop,停止
+perf.mark,标记
+perf.export,导出
+perf.copy_path,复制路径
+perf.compact,收起
+perf.expand,展开
+perf.previous,上一帧
+perf.next,下一帧
+perf.worst,最长帧
+perf.live,实时
+perf.mode_summary,逐帧统计
+perf.mode_detail,详细调用
+perf.view_calls,函数耗时
+perf.view_engine,引擎指标
+perf.view_events,操作事件
+perf.recording,记录中
+perf.stopping,正在停止
+perf.exporting,正在导出
+perf.ready,准备就绪
+perf.stopped,已停止
+perf.frames,帧
+perf.failed,采集或导出失败，展开面板查看详情。
+perf.ready_hint,开始记录后操作画布，停止时自动导出。关闭面板后继续记录。
+perf.capacity_hint,记录上限：{0} 帧 / {1} 条调用明细。达到上限时停止并导出。
+perf.recent_stats,最近 300 帧 · 中位数 {0} / P95 {1} / P99 {2} / 最长 {3} ms
+perf.all_stats,全部完整帧 · 中位数 {0} / P95 {1} / P99 {2} / 最长 {3} ms
+perf.frame_detail,记录帧 {0} · Unity 帧 {1} · {2} ms · {3}
+perf.context,可见容器 {0}/{1} · 物品 {2} · 图形 {3} · 交互图形 {4}
+perf.context_work,进入 {0} / 离开 {1} · 待刷新 {2} · 指针缓存命中 {3} / 查询 {4}
+perf.call_columns,函数 · 次数 · 包含子调用 / 自身 / 最长单次
+perf.call_note,包含子调用的耗时存在重叠。自身耗时扣除已记录的子调用。计时包含线程等待。
+perf.unavailable,不可用 / 本帧无样本
+perf.native_samples,原始帧计时样本：{0}
+perf.native_note,延迟返回的原始帧计时在导出数据中保留独立时间戳，来源 Unity 帧编号未知。
+perf.event_count,共 {0} 条事件，显示最近 100 条。
+perf.sample_count,调用明细 {0} · 明细溢出 {1} · 事件溢出 {2}
+perf.stop_reason,停止原因：{0}
 app.enabled,扁平存储已启用。快捷键：{0}
 settings.shortcut,全局仓储快捷键
 settings.open,打开全局仓储

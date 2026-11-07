@@ -25,6 +25,10 @@ namespace ProbablyStolen_FlatStorage
             ModHelper.AddGameOptionKeyBind(Id, "storage", "shortcut", () => ModText.Get("settings.open"),
                 () => Shortcut.Value, key => Shortcut.Set(key));
             ModSettings.Register(config);
+            PerformanceMonitor.Install();
+#if FLAT_STORAGE_RUNTIME_VALIDATION
+            PerformanceRuntimeValidation.Install();
+#endif
             ModHook.OnGameLoadedInit += Loading;
             ModHook.OnGameLoadedLate += Loaded;
             ModHook.OnAfterhourArriveEarly += Leaving;
@@ -34,6 +38,7 @@ namespace ProbablyStolen_FlatStorage
 
         public void OnDisable()
         {
+            PerformanceMonitor.Shutdown();
             ModHook.OnGameLoadedInit -= Loading;
             ModHook.OnGameLoadedLate -= Loaded;
             ModHook.OnAfterhourArriveEarly -= Leaving;
@@ -51,8 +56,16 @@ namespace ProbablyStolen_FlatStorage
             Instance.Log.Log(ModText.Get("app.enabled", Instance.Shortcut.Value));
         }
 
-        private static void Loading() => FlatStorageController.Current?.CloseWithoutSave();
+        private static void Loading()
+        {
+            PerformanceMonitor.Boundary("game-loading");
+            FlatStorageController.Current?.CloseWithoutSave();
+        }
         private static void Leaving(string location) => Closing();
-        private static void Closing() => FlatStorageController.Current?.Close();
+        private static void Closing()
+        {
+            PerformanceMonitor.Boundary("scene-transition");
+            FlatStorageController.Current?.Close();
+        }
     }
 }

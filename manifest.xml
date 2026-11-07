@@ -14,5 +14,8 @@
     <Assembly>ProbablyStolen_FlatStorage.dll</Assembly>
   </Assemblies>
   <!-- 能力声明由游戏提供的 ModScanner 检查。 -->
-  <Capabilities />
+  <Capabilities>
+    <Capability>files</Capability>
+    <Capability>reflection-external</Capability>
+  </Capabilities>
 </Manifest>

@@ -42,7 +42,9 @@ namespace ProbablyStolen_FlatStorage
                 if (item is GameItemElement element && !element.IsDestroyed()) previews.Add(element.fakeMiddle.transform);
                 NativeSelection.CollectDragPreviews(previews);
             }
-            if (cache.TryGetValue(position, out var cached)) return cached;
+            if (cache.TryGetValue(position, out var cached))
+            { PerformanceMonitor.Active?.Pointer(true); return cached; }
+            PerformanceMonitor.Active?.Pointer(false);
             pointer.Reset(); pointer.position = position;
             results.Clear(); events.RaycastAll(pointer, results);
             GameObject raw = null, top = null;

@@ -95,6 +95,8 @@ namespace ProbablyStolen_FlatStorage
             !(Source.Owner is GameItemElement item && item.IsDestroyed());
         internal bool IsVisibleInViewport { get; private set; } = true;
         internal bool OriginallyVisible => visible;
+        internal int PerformanceGraphics => GraphicRegistry.GetGraphicsForCanvas(renderCanvas).Count;
+        internal int PerformanceRaycastGraphics => GraphicRegistry.GetRaycastableGraphicsForCanvas(renderCanvas).Count;
         public float Width => Math.Max(1, Source.Window.widthPixels);
         public float Height => Source.Window.heightPixels + 20;
         public Box Bounds => new Box(Position.X, Position.Y, Width, Height);
@@ -176,6 +178,7 @@ namespace ProbablyStolen_FlatStorage
 
         private void OnInventoryChanged(GameItem item, GameInventory inventory, SlotMarker slot)
         {
+            PerformanceMonitor.Active?.Event("inventory-change", Source.Id + ";item=" + item.identifier);
             MarkDirty();
             if (item.contentWindow != null) FlatStorageController.Current?.RequestSources();
         }
@@ -308,6 +311,9 @@ namespace ProbablyStolen_FlatStorage
         {
             if (show && !IsAvailable) return;
             if (show == IsVisibleInViewport) return;
+            var capture = PerformanceMonitor.Active;
+            capture?.Visibility(show);
+            capture?.Event(show ? "window-enter" : "window-leave", Source.Id);
             if (show) Refresh(true);
             IsVisibleInViewport = show;
             visibility.alpha = show ? 1 : 0;

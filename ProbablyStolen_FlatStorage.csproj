@@ -11,11 +11,14 @@
     <GameDir>$(MSBuildProjectDirectory)\..\..</GameDir>
     <ManagedDir>$(GameDir)\Probably Stolen_Data\Managed</ManagedDir>
     <ModInstallDir>$(GameDir)\Mods\ProbablyStolen_FlatStorage</ModInstallDir>
+    <DefineConstants Condition="'$(PerformanceRuntimeValidation)' == 'true'">$(DefineConstants);FLAT_STORAGE_RUNTIME_VALIDATION</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove=".work\**;Tests\**" />
-    <Reference Include="UnityEngine.UI;Unity.TextMeshPro;UnityEngine.UIModule;UnityEngine.InputLegacyModule;UnityEngine.TextRenderingModule;Newtonsoft.Json">
+    <Compile Include="Tests\PerformanceRuntimeValidation.cs" Condition="'$(PerformanceRuntimeValidation)' == 'true'" />
+    <EmbeddedResource Include="Resources\performance-report.html" LogicalName="FlatStorage.PerformanceReport" />
+    <Reference Include="UnityEngine.UI;Unity.TextMeshPro;UnityEngine.UIModule;UnityEngine.IMGUIModule;UnityEngine.InputLegacyModule;UnityEngine.TextRenderingModule;Newtonsoft.Json">
       <HintPath>$(ManagedDir)\%(Identity).dll</HintPath>
       <Private>false</Private>
     </Reference>
@@ -29,6 +32,10 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass" Condition="'$(PerformanceRuntimeValidation)' == 'true'">
+      <HintPath>$(ManagedDir)\Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">

@@ -1,4 +1,43 @@
 app.name,Flat Storage
+perf.title,Profiler
+perf.start,Record
+perf.stop,Stop
+perf.mark,Mark
+perf.export,Export
+perf.copy_path,Copy path
+perf.compact,Small
+perf.expand,Expand
+perf.previous,Prev
+perf.next,Next
+perf.worst,Slowest
+perf.live,Live
+perf.mode_summary,Statistics
+perf.mode_detail,Full calls
+perf.view_calls,Calls
+perf.view_engine,Engine
+perf.view_events,Events
+perf.recording,Recording
+perf.stopping,Stopping
+perf.exporting,Exporting
+perf.ready,Ready
+perf.stopped,Stopped
+perf.frames,frames
+perf.failed,Capture or export failed. Expand the panel for details.
+perf.ready_hint,Record operations then stop to export automatically. Closing this panel keeps recording.
+perf.capacity_hint,Limits: {0} frames / {1} call details. Reaching a limit stops and exports the recording.
+perf.recent_stats,Recent 300 frames · median {0} / P95 {1} / P99 {2} / max {3} ms
+perf.all_stats,All complete frames · median {0} / P95 {1} / P99 {2} / max {3} ms
+perf.frame_detail,Record {0} · Unity {1} · {2} ms · {3}
+perf.context,Visible {0}/{1} · items {2} · graphics {3} · input graphics {4}
+perf.context_work,Entered {0} / left {1} · refresh queue {2} · pointer cache {3} hits / {4} queries
+perf.call_columns,Function · calls · inclusive / self / max
+perf.call_note,Inclusive timings overlap. Self time excludes instrumented child calls. Timing includes thread waits.
+perf.unavailable,Unavailable / no sample in this frame
+perf.native_samples,Native frame timing samples: {0}
+perf.native_note,Delayed native timings retain their own timestamps in the export. Their source Unity frame is unknown.
+perf.event_count,Total {0} events. Showing the latest 100.
+perf.sample_count,Call details {0} · omitted calls {1} · omitted events {2}
+perf.stop_reason,Stop reason: {0}
 app.enabled,Flat Storage enabled. Shortcut: {0}
 settings.shortcut,Global storage shortcut
 settings.open,Open global storage

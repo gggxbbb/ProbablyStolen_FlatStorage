@@ -191,6 +191,15 @@ namespace ProbablyStolen_FlatStorage
         private static void Postfix(bool? __state) => CanvasInventoryHover.Exit(__state);
     }
 
+    [HarmonyPatch(typeof(KeyBindHelper), nameof(KeyBindHelper.GetBackDown))]
+    internal static class CanvasBackPriority
+    {
+        private static void Postfix(ref bool __result)
+        {
+            if (FlatStorageController.Current?.EscapeFrame == Time.frameCount) __result = false;
+        }
+    }
+
     [HarmonyPatch(typeof(InputActionHandler), nameof(InputActionHandler.UpdateMouseScroll))]
     internal static class CanvasScrollPriority
     {

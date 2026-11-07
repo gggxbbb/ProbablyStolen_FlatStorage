@@ -34,7 +34,9 @@ namespace ProbablyStolen_FlatStorage
 
         private TreeNodeRender Button(string key, float width, Action action)
         {
+            width *= 2;
             var node = FlatUI.Button(root, ModText.Get(key), 0, width, () => { });
+            node.GetComponentInChildren<TMP_Text>().fontSize = 16;
             node.GetComponent<Button>().onClick.AddListener(() => owner.Run(action));
             buttons.Add((node, width)); return node;
         }
@@ -50,7 +52,7 @@ namespace ProbablyStolen_FlatStorage
             start = Button("perf.start", 44, () => { follow = true; selected = -1; owner.StartRecording(); });
             stop = Button("perf.stop", 36, () => owner.RequestStop());
             marker = Button("perf.mark", 36, owner.Mark);
-            mode = Button("perf.mode_summary", 64, () => { owner.Detailed = !owner.Detailed; Invalidate(); });
+            mode = Button("perf.mode_summary", 64, () => { owner.Mode = (PerfRecordingMode)(((int)owner.Mode + 1) % 3); Invalidate(); });
             export = Button("perf.export", 36, owner.Export);
             report = Button("perf.copy_path", 50, () => GUIUtility.systemCopyBuffer = Path.GetDirectoryName(owner.ExportPath));
             compactButton = Button("perf.compact", 36, () => { compact = !compact; Resize(); Invalidate(); });
@@ -66,7 +68,7 @@ namespace ProbablyStolen_FlatStorage
             });
             Button("perf.live", 36, () => { follow = true; Invalidate(); });
             viewButton = Button("perf.view_calls", 54, () => { view = (view + 1) % 3; scroll.verticalNormalizedPosition = 1; Invalidate(); });
-            status = Label(root, 7); summary = Label(root, 7);
+            status = Label(root, 16); summary = Label(root, 16);
             var chartObject = new GameObject("Performance frame chart", typeof(RectTransform), typeof(CanvasRenderer), typeof(PerformanceChart));
             chartObject.transform.SetParent(root.transform, false);
             chart = chartObject.GetComponent<PerformanceChart>();
@@ -75,7 +77,7 @@ namespace ProbablyStolen_FlatStorage
             detailsViewport.mask.enabled = true;
             detailsContent = FlatUI.Panel(detailsViewport, "Performance details", Color.clear);
             detailsContent.image.raycastTarget = false;
-            detailsText = Label(detailsContent, 7);
+            detailsText = Label(detailsContent, 16);
             scroll = detailsViewport.gameObject.AddComponent<ScrollRect>();
             scroll.viewport = detailsViewport.rectTransform; scroll.content = detailsContent.rectTransform;
             scroll.horizontal = false; scroll.vertical = true; scroll.movementType = ScrollRect.MovementType.Clamped;
@@ -96,7 +98,7 @@ namespace ProbablyStolen_FlatStorage
         {
             if (window == null) return;
             FlatUI.FitScreen(window, compact ? .42f : .78f);
-            if (compact) window.SetSize(window.Rect.rect.width, Math.Min(window.Rect.rect.height, 128));
+            if (compact) window.SetSize(window.Rect.rect.width, Math.Min(window.Rect.rect.height, 210));
             lastWidth = lastHeight = -1;
             Layout();
         }
@@ -107,21 +109,21 @@ namespace ProbablyStolen_FlatStorage
             if (width == lastWidth && height == lastHeight) return;
             lastWidth = width; lastHeight = height;
             NativeAccess.Place(root, 0, 0, width, height);
-            float x = 6, y = 6;
+            float x = 10, y = 10;
             foreach (var button in buttons)
             {
                 bool visible = !compact || button.Node == start || button.Node == stop || button.Node == marker || button.Node == compactButton;
                 button.Node.gameObject.SetActive(visible);
                 if (!visible) continue;
-                if (x > 6 && x + button.Width > width - 6) { x = 6; y += 23; }
-                NativeAccess.Place(button.Node, x, y, button.Width, 19); x += button.Width + 4;
+                if (x > 10 && x + button.Width > width - 10) { x = 10; y += 40; }
+                FlatUI.SizeButton(button.Node, new Box(x, y, button.Width, 32)); x += button.Width + 8;
             }
-            y += 24;
-            NativeAccess.Place(status, 7, y, Math.Max(1, width - 14), 26); y += 28;
-            NativeAccess.Place(summary, 7, y, Math.Max(1, width - 14), 26); y += 28;
+            y += 42;
+            NativeAccess.Place(status, 10, y, Math.Max(1, width - 20), 40); y += 42;
+            NativeAccess.Place(summary, 10, y, Math.Max(1, width - 20), 44); y += 46;
             chart.gameObject.SetActive(!compact); detailsViewport.gameObject.SetActive(!compact);
             if (compact) return;
-            float graphHeight = Math.Max(38, Math.Min(94, (height - y) * .38f));
+            float graphHeight = Math.Max(56, Math.Min(150, (height - y) * .3f));
             FlatUI.Rect(chart.rectTransform, 7, y, Math.Max(1, width - 14), graphHeight); y += graphHeight + 7;
             NativeAccess.Place(detailsViewport, 7, y, Math.Max(1, width - 14), Math.Max(20, height - y - 7));
             LayoutDetails();
@@ -156,7 +158,7 @@ namespace ProbablyStolen_FlatStorage
             mode.GetComponent<Button>().interactable = !owner.IsRecording && !owner.IsExporting;
             export.GetComponent<Button>().interactable = capture != null && !owner.IsExporting && owner.ExportPath == null;
             report.GetComponent<Button>().interactable = owner.ExportPath != null;
-            SetButton(mode, owner.Detailed ? "perf.mode_detail" : "perf.mode_summary");
+            SetButton(mode, owner.Mode == PerfRecordingMode.FrameTimes ? "perf.mode_frames" : owner.Detailed ? "perf.mode_detail" : "perf.mode_summary");
             SetButton(compactButton, compact ? "perf.expand" : "perf.compact");
             SetButton(viewButton, view == 0 ? "perf.view_calls" : view == 1 ? "perf.view_engine" : "perf.view_events");
             string state = owner.IsRecording ? (owner.StopRequested == null ? "perf.recording" : "perf.stopping") : owner.IsExporting ? "perf.exporting" : capture == null ? "perf.ready" : "perf.stopped";

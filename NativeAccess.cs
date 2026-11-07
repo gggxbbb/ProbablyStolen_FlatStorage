@@ -130,7 +130,7 @@ namespace ProbablyStolen_FlatStorage
                 return true;
             });
             visibility = Group.gameObject.AddComponent<CanvasGroup>();
-            renderCanvas = FlatUI.IsolateCanvas(Group);
+            renderCanvas = FlatUI.IsolateCanvas(Group, true);
             raycaster = Group.GetComponent<GraphicRaycaster>();
             Active.Add(window, this);
             Groups.Add(Group, this);

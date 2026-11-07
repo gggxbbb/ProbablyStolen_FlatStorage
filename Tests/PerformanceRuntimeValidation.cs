@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -21,13 +22,11 @@ namespace ProbablyStolen_FlatStorage
         private readonly List<RaycastResult> hits = new List<RaycastResult>();
         private PointerEventData pointer;
         private string firstResult;
+        private Type[] originalLoop;
         internal static void Install()
         {
-            string[] args = Environment.GetCommandLineArgs();
-            int index = Array.IndexOf(args, "-flat-storage-profile-smoke");
-            if (index < 0) return;
-            if (index + 1 >= args.Length) throw new ArgumentException("Runtime validation needs its isolated directory.");
-            directory = Path.GetFullPath(args[index + 1]);
+            directory = Path.GetFullPath(typeof(PerformanceRuntimeValidation).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>().Single(attribute => attribute.Key == "FlatStorageValidationDirectory").Value);
             if (!File.Exists(Path.Combine(directory, "save_1.es3"))) throw new FileNotFoundException("Runtime validation save copy is missing.");
             new GameObject("Flat Storage Runtime Validation").AddComponent<PerformanceRuntimeValidation>();
         }
@@ -77,6 +76,17 @@ namespace ProbablyStolen_FlatStorage
                 if (controller == null || CustomUIManager.Instance == null || EventSystem.current == null) return;
                 controller.Toggle();
                 if (!controller.IsOpen) throw new InvalidOperationException("Storage did not open.");
+                Canvas.ForceUpdateCanvases();
+                CheckRaycastBounds();
+                var state = (CanvasState)AccessTools.Field(typeof(FlatStorageController), "state").GetValue(controller);
+                var viewWidth = (float)AccessTools.Property(typeof(FlatStorageController), "ViewWidth").GetValue(controller);
+                var viewHeight = (float)AccessTools.Property(typeof(FlatStorageController), "ViewHeight").GetValue(controller);
+                state.ZoomAt(viewWidth / 2, viewHeight / 2, .360610038f);
+                controller.RefreshNow();
+                Canvas.ForceUpdateCanvases();
+                CheckRaycastBounds();
+                originalLoop = LoopTypes(UnityEngine.LowLevel.PlayerLoop.GetCurrentPlayerLoop()).ToArray();
+                File.WriteAllLines(Path.Combine(directory, "player-loop.txt"), originalLoop.Select(type => type?.FullName ?? "root"));
                 AccessTools.Field(typeof(PerformanceMonitor), "directory").SetValue(monitor, Path.Combine(directory, "captures"));
                 monitor.Panel.Toggle();
                 Click("perf.start");
@@ -113,7 +123,8 @@ namespace ProbablyStolen_FlatStorage
             {
                 var capture = monitor.Capture;
                 if (capture.FrameCount < 100) throw new InvalidOperationException("Recorded frame count is too small.");
-                foreach (var metric in new[] { PerfMetric.Controller, PerfMetric.ApplyView, PerfMetric.EventRaycast, PerfMetric.GraphicRaycast, PerfMetric.Clipping, PerfMetric.Panel, PerfMetric.WindowValidate })
+                foreach (var metric in new[] { PerfMetric.Controller, PerfMetric.ApplyView, PerfMetric.EventRaycast, PerfMetric.GraphicRaycast, PerfMetric.Clipping, PerfMetric.Panel, PerfMetric.WindowValidate,
+                    PerfMetric.GameInput, PerfMetric.NativeCanvasUpdate, PerfMetric.NativeCanvasGeometry, PerfMetric.NativeFrameRender, PerfMetric.NativePresent })
                     if (capture.Aggregate(metric, 0, capture.FrameCount).Calls == 0) throw new InvalidOperationException("Missing real calls: " + metric);
                 if (!File.Exists(monitor.ExportPath)) throw new FileNotFoundException("Recording export is missing.");
                 if (!capture.Frames.Take(capture.FrameCount).Any(f => (f.Context.Operations & PerfOperation.Pan) != 0))
@@ -125,6 +136,7 @@ namespace ProbablyStolen_FlatStorage
                         throw new InvalidOperationException("Missing real engine metric: " + name);
                 }
                 firstResult = "summaryFrames=" + capture.FrameCount + "\nsummarySpans=" + capture.SpanCount + "\nsummaryExport=" + monitor.ExportPath;
+                CheckLoopRestored();
                 Click("perf.worst"); Click("perf.previous"); Click("perf.next");
                 Click("perf.mode_summary"); monitor.Panel.Tick();
                 Click("perf.start");
@@ -176,12 +188,82 @@ namespace ProbablyStolen_FlatStorage
                     if (Harmony.GetPatchInfo(method)?.Owners.Contains(ModEntry.Id + ".performance") == true)
                         throw new InvalidOperationException("Recording hooks remain installed after stopping.");
                 }
+                firstResult += "\ndetailedFrames=" + capture.FrameCount + "\ndetailedSpans=" + capture.SpanCount + "\ndetailedExport=" + monitor.ExportPath;
+                monitor.Mode = PerfRecordingMode.FrameTimes;
+                Click("perf.start");
+                if (Harmony.GetPatchInfo(AccessTools.Method(typeof(CanvasUpdateRegistry), "PerformUpdate"))?.Owners.Contains(ModEntry.Id + ".performance") == true)
+                    throw new InvalidOperationException("Frame timing baseline installed method hooks.");
+                began = Time.frameCount; stage = 8;
+                return;
+            }
+            if (stage == 8 && Time.frameCount - began >= 45)
+            {
+                Click("perf.stop"); stage = 9;
+                return;
+            }
+            if (stage == 9 && monitor.ExportPath != null)
+            {
+                CheckLoopRestored();
+                if (monitor.Capture.Aggregate(PerfMetric.Controller, 0, monitor.Capture.FrameCount).Calls != 0)
+                    throw new InvalidOperationException("Frame timing baseline contains hooked controller calls.");
+                if (monitor.Capture.FrameCount < 40) throw new InvalidOperationException("Frame timing baseline is incomplete.");
                 finished = true;
-                string result = "PASS\n" + firstResult + "\ndetailedFrames=" + capture.FrameCount + "\ndetailedSpans=" + capture.SpanCount + "\ndetailedExport=" + monitor.ExportPath + "\nexportFailureRecovery=PASS";
+                string result = "PASS\n" + firstResult + "\nframeTimingFrames=" + monitor.Capture.FrameCount + "\nframeTimingExport=" + monitor.ExportPath + "\nraycastBounds=PASS\nexportFailureRecovery=PASS";
                 File.WriteAllText(Path.Combine(directory, "result.txt"), result);
                 Debug.Log("[FlatStorageRuntime] " + result);
                 Application.Quit();
             }
+        }
+
+        private static IEnumerable<Type> LoopTypes(UnityEngine.LowLevel.PlayerLoopSystem system)
+        {
+            yield return system.type;
+            if (system.subSystemList != null)
+                foreach (var child in system.subSystemList)
+                    foreach (var type in LoopTypes(child)) yield return type;
+        }
+
+        private void CheckLoopRestored()
+        {
+            if (!originalLoop.SequenceEqual(LoopTypes(UnityEngine.LowLevel.PlayerLoop.GetCurrentPlayerLoop())))
+                throw new InvalidOperationException("Player loop differs after recording stopped.");
+        }
+
+        private static void CheckRaycastBounds()
+        {
+            var pointer = new PointerEventData(EventSystem.current);
+            var expected = new List<RaycastResult>();
+            var actual = new List<RaycastResult>();
+            int checks = 0;
+            foreach (var lease in WindowLease.Active.Values)
+            {
+                var canvas = lease.Group.GetComponent<Canvas>();
+                if (!canvas.enabled) continue;
+                if (canvas.pixelPerfect || !canvas.overridePixelPerfect) throw new InvalidOperationException("Storage canvas still inherits pixel snapping.");
+                var bounded = lease.Group.GetComponent<StorageRaycaster>();
+                var reference = lease.Group.gameObject.AddComponent<GraphicRaycaster>();
+                reference.enabled = false;
+                var corners = new Vector3[4];
+                var graphics = GraphicRegistry.GetRaycastableGraphicsForCanvas(canvas);
+                for (int index = 0; index < graphics.Count; index++)
+                {
+                    var graphic = graphics[index];
+                    graphic.rectTransform.GetWorldCorners(corners);
+                    var points = new[] { corners[0], corners[1], corners[2], corners[3], (corners[0] + corners[2]) / 2 };
+                    foreach (var point in points)
+                    {
+                        pointer.position = RectTransformUtility.WorldToScreenPoint(bounded.eventCamera, point);
+                        expected.Clear(); actual.Clear();
+                        reference.Raycast(pointer, expected); bounded.Raycast(pointer, actual);
+                        if (!expected.Select(hit => hit.gameObject).SequenceEqual(actual.Select(hit => hit.gameObject)))
+                            throw new InvalidOperationException("Raycast differs at " + lease.Source.Id + "/" + graphic.name + "/" + pointer.position);
+                        checks++;
+                    }
+                }
+                UnityEngine.Object.Destroy(reference);
+            }
+            if (checks == 0) throw new InvalidOperationException("No real graphics were checked.");
+            Debug.Log("[FlatStorageRuntime] Matching native raycast results: " + checks);
         }
 
         private static void CheckPanelBounds()

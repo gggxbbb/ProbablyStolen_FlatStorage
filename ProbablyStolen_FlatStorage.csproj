@@ -17,6 +17,7 @@
   <ItemGroup>
     <Compile Remove=".work\**;Tests\**" />
     <Compile Include="Tests\PerformanceRuntimeValidation.cs" Condition="'$(PerformanceRuntimeValidation)' == 'true'" />
+    <AssemblyMetadata Include="FlatStorageValidationDirectory" Value="$(RuntimeValidationDirectory)" Condition="'$(PerformanceRuntimeValidation)' == 'true'" />
     <EmbeddedResource Include="Resources\performance-report.html" LogicalName="FlatStorage.PerformanceReport" />
     <Reference Include="UnityEngine.UI;Unity.TextMeshPro;UnityEngine.UIModule;UnityEngine.IMGUIModule;UnityEngine.InputLegacyModule;UnityEngine.TextRenderingModule;Newtonsoft.Json">
       <HintPath>$(ManagedDir)\%(Identity).dll</HintPath>
@@ -43,6 +44,10 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <Target Name="CheckRuntimeValidationDirectory" BeforeTargets="CoreCompile" Condition="'$(PerformanceRuntimeValidation)' == 'true'">
+    <Error Condition="'$(RuntimeValidationDirectory)' == ''" Text="RuntimeValidationDirectory must identify the isolated save directory." />
+  </Target>
 
   <!-- 随模组发布的说明和资源文件。 -->
   <ItemGroup>

@@ -13,6 +13,7 @@ perf.worst,Slowest
 perf.live,Live
 perf.mode_summary,Statistics
 perf.mode_detail,Full calls
+perf.mode_frames,Frame timing
 perf.view_calls,Calls
 perf.view_engine,Engine
 perf.view_events,Events

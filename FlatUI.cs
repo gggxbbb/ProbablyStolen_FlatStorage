@@ -51,13 +51,16 @@ namespace ProbablyStolen_FlatStorage
             if (rect.sizeDelta != size) rect.sizeDelta = size;
         }
 
-        internal static Canvas IsolateCanvas(TreeNodeRender node)
+        internal static Canvas IsolateCanvas(TreeNodeRender node, bool boundPointer = false)
         {
             var parent = node.GetComponentInParent<Canvas>();
             var canvas = node.gameObject.AddComponent<Canvas>();
             canvas.overrideSorting = false;
+            // 平移与缩放使用已有图形；容器内容变化时仍由 Unity 更新几何数据。
+            canvas.overridePixelPerfect = true;
+            canvas.pixelPerfect = false;
             if (parent != null) canvas.additionalShaderChannels = parent.additionalShaderChannels;
-            var raycaster = node.gameObject.AddComponent<GraphicRaycaster>();
+            var raycaster = boundPointer ? node.gameObject.AddComponent<StorageRaycaster>() : node.gameObject.AddComponent<GraphicRaycaster>();
             raycaster.blockingObjects = GraphicRaycaster.BlockingObjects.None;
             return canvas;
         }

@@ -10,6 +10,8 @@ using UnityEngine;
 
 namespace ProbablyStolen_FlatStorage
 {
+    internal enum PerfRecordingMode { Summary, Detailed, FrameTimes }
+
     [DefaultExecutionOrder(-32000)]
     public sealed class PerformanceMonitor : MonoBehaviour
     {
@@ -17,7 +19,8 @@ namespace ProbablyStolen_FlatStorage
         internal static PerfCapture Active => Current != null && Thread.CurrentThread.ManagedThreadId == Current.mainThread
             && Current.Capture?.IsRecording == true ? Current.Capture : null;
         internal PerfCapture Capture { get; private set; }
-        internal bool Detailed { get; set; }
+        internal PerfRecordingMode Mode { get; set; }
+        internal bool Detailed => Mode == PerfRecordingMode.Detailed;
         internal bool IsRecording => Capture?.IsRecording == true;
         internal bool IsExporting => export != null;
         internal bool CanStart => !IsRecording && !IsExporting && (Capture == null || ExportPath != null);
@@ -26,6 +29,7 @@ namespace ProbablyStolen_FlatStorage
         internal string StopRequested { get; private set; }
         internal PerformancePanel Panel { get; private set; }
         private PerformanceHooks hooks;
+        private PerformanceLoop loop;
         private PerformanceCounters counters;
         private Task<string> export;
         private int mainThread, markers, geometryFrame = -1, itemCount, graphicCount, raycastCount;
@@ -92,10 +96,12 @@ namespace ProbablyStolen_FlatStorage
             counters = new PerformanceCounters();
             try
             {
-                hooks = new PerformanceHooks();
+                if (Mode != PerfRecordingMode.FrameTimes) { hooks = new PerformanceHooks(); loop = new PerformanceLoop(); }
                 var metadata = new Dictionary<string, object>
                 {
                     ["modVersion"] = typeof(ModEntry).Assembly.GetName().Version.ToString(),
+                    ["recordingMode"] = Mode.ToString(),
+                    ["methodInstrumentation"] = hooks != null,
                     ["assemblySha256"] = AssemblyHash(),
                     ["enabledMods"] = ModLoader.Mods.Where(mod => mod.IsEnabled).Select(mod => new
                         { mod.Manifest.ID, mod.Manifest.Name, version = mod.Manifest.ModVersion, source = mod.Source.ToString() }).ToArray(),
@@ -111,24 +117,33 @@ namespace ProbablyStolen_FlatStorage
                     ["scene"] = FlatStorageController.Current?.PerformanceScene,
                     ["cpuTimerFrequency"] = counters.CpuTimerFrequency, ["gpuTimerFrequency"] = counters.GpuTimerFrequency,
                     ["availableEngineMetrics"] = counters.Available,
+                    ["uiCanvases"] = UnityEngine.Object.FindObjectsOfType<Canvas>().Select(canvas => new
+                    {
+                        name = canvas.name, root = canvas.rootCanvas.name, canvas.pixelPerfect, canvas.overridePixelPerfect,
+                        storageId = WindowLease.Find(canvas.transform)?.Source.Id,
+                        canvas.scaleFactor, mode = canvas.renderMode.ToString(), canvas.overrideSorting,
+                        graphics = UnityEngine.UI.GraphicRegistry.GetGraphicsForCanvas(canvas).Count
+                    }).ToArray(),
+                    ["uiTiming"] = "NativeCanvasTransform times EarlyUpdate.UpdateCanvasRectTransform before the closing Update boundary. Other Native metrics time PostLateUpdate: UpdateRectTransform, PlayerUpdateCanvases, PlayerEmitCanvasGeometry, FinishFrameRendering and PresentAfterDraw. These include native work and waits. CanvasPreRender and CanvasRender wrap Unity callbacks; TextUpdates and CanvasUpdate are nested. GraphicGeometry, GraphicMaterial, TextGenerate, TextScale, Clipping and raycast metrics identify component subjects. Parent total times overlap; use self times for attribution. Native engine counters may overlap across threads and are not additive.",
                     ["counterSampling"] = "Read new engine samples at early Update without resetting collection. A single new sample is associated with the preceding frame interval. Missing or multiple ambiguous samples are null; engine-counter-gap events record ambiguity. Startup samples are discarded.",
                     ["nativeTimingAssociation"] = "Native GPU/CPU timings retain native timestamps and observation frame only. Exact source Unity frame is unknown.",
                     ["frameInterval"] = "Elapsed monotonic time between consecutive recorder sampling boundaries in early Update; includes engine work and waits. Partial final frames are excluded from percentiles.",
                     ["operationSampling"] = "Operation flags and pointer state sampled in LateUpdate. Pan includes observed view movement; Panel means pointer inside panel. panelVisible tracks panel rendering. Explicit pan/zoom/open/close markers are emitted at the corresponding control action.",
                     ["selfTime"] = "Elapsed call time excluding directly nested instrumented calls on the main thread; includes uninstrumented work and scheduling waits.",
-                    ["instrumentation"] = "Targeted main-thread Harmony hooks. Recorder and panel work are measured; hook overhead requires a separate recording-disabled baseline.",
+                    ["instrumentation"] = "Summary and Detailed install targeted main-thread Harmony hooks and Unity player-loop phase timers. FrameTimes records frame intervals, operations and engine counters without those hooks or phase timers. Compare matching FrameTimes and Summary runs to quantify instrumentation overhead. Recorder and panel work are measured in every mode.",
                     ["percentiles"] = "Nearest rank over complete recorded frame intervals.",
                     ["geometrySampling"] = "Visible group Graphic registry counts and catalog item counts sampled every 0.5 seconds; geometrySampleFrame indicates age."
                 };
                 Capture = new PerfCapture(metadata, counters.Info, Detailed);
                 ExportPath = null;
-                Capture.Event("start", Detailed ? "detailed" : "frame-summary-and-slow-calls");
+                Capture.Event("start", Mode.ToString());
                 nextGeometrySample = 0; geometryFrame = -1;
                 FlatStorageController.Current?.PerformanceChanged();
                 Panel.Invalidate();
             }
             catch
             {
+                loop?.Dispose(); loop = null;
                 hooks?.Dispose(); hooks = null;
                 counters.Dispose(); counters = null;
                 throw;
@@ -211,6 +226,7 @@ namespace ProbablyStolen_FlatStorage
         {
             if (!IsRecording) return;
             Capture.Stop(reason);
+            loop?.Dispose(); loop = null;
             hooks?.Dispose(); hooks = null;
             counters?.Dispose(); counters = null;
             StopRequested = null;
@@ -251,7 +267,7 @@ namespace ProbablyStolen_FlatStorage
         private void OnDestroy()
         {
             if (!shuttingDown) Run(() => { StopNow("monitor-destroyed"); if (export != null) CompleteExport(); });
-            hooks?.Dispose(); counters?.Dispose(); Panel?.Dispose();
+            loop?.Dispose(); hooks?.Dispose(); counters?.Dispose(); Panel?.Dispose();
             if (Current == this) Current = null;
         }
     }

@@ -14,7 +14,7 @@
 <div class="cards" id="cards"></div>
 <section>
 <div class="controls">
-<label>操作<select id="operation"><option value="all">全部帧</option><option value="idle">静止</option><option value="2">平移</option><option value="4">缩放</option><option value="8">移动容器</option><option value="16">拖动物品</option><option value="32">框选</option><option value="128">操作性能面板</option></select></label>
+<label>操作<select id="operation"><option value="all">全部帧</option><option value="viewMove">视图实际平移</option><option value="viewScale">视图实际缩放</option><option value="stableStill">视图连续静止</option><option value="idle">空闲操作</option><option value="2">平移操作期间</option><option value="4">缩放操作期间</option><option value="8">移动容器</option><option value="16">拖动物品</option><option value="32">框选</option><option value="128">操作性能面板</option></select></label>
 <label>起始记录帧<input id="from" type="number" min="0" value="0"></label>
 <label>结束记录帧<input id="to" type="number" min="0"></label>
 <button id="worst">定位最长帧</button><button id="reset">重置区间</button>
@@ -47,10 +47,14 @@ let selected=0,visible=[],buckets=[];
 const number=(value,digits=3)=>Number(value).toLocaleString('zh-CN',{maximumFractionDigits:digits,minimumFractionDigits:digits});
 const integer=value=>Number(value).toLocaleString('zh-CN');
 const get=(index,name)=>frames[index][cols[name]];
+const scaled=index=>index>0&&Math.abs(get(index,'zoom')-get(index-1,'zoom'))>.00001;
+const moved=index=>index>0&&(Math.abs(get(index,'panX')-get(index-1,'panX'))>.01||Math.abs(get(index,'panY')-get(index-1,'panY'))>.01);
+const viewOpen=index=>index>0&&(get(index,'operations')&1)&&(get(index-1,'operations')&1);
+const frameTiming=data.metadata.recordingMode==='FrameTimes';
 const operations=flags=>Object.entries(data.operations).filter(([name,value])=>value&&(flags&value)).map(([name])=>name).join(' · ')||'None';
 function cells(parent,values,click){const tr=document.createElement('tr');for(const value of values){const td=document.createElement('td');td.textContent=String(value??'');tr.append(td)}if(click){tr.onclick=click;tr.tabIndex=0;tr.onkeydown=e=>{if(e.key==='Enter')click()}}parent.append(tr);return tr}
 function stats(indices){const sorted=indices.filter(i=>get(i,'complete')).map(i=>get(i,'intervalMs')).sort((a,b)=>a-b);const q=p=>sorted[Math.max(0,Math.ceil(sorted.length*p)-1)]??0;return {count:sorted.length,median:q(.5),p95:q(.95),p99:q(.99),max:q(1),sum:sorted.reduce((a,b)=>a+b,0)}}
-function filter(){const first=Math.max(0,Math.min(frames.length-1,Number($('from').value)||0));const last=Math.max(first,Math.min(frames.length-1,Number($('to').value)||0));const op=$('operation').value;visible=[];for(let i=first;i<=last;i++){const flags=get(i,'operations');if(op==='all'||op==='idle'&&!(flags&254)||op!=='idle'&&op!=='all'&&(flags&Number(op)))visible.push(i)}if(!visible.includes(selected))selected=visible[0]??0;render()}
+function filter(){const first=Math.max(0,Math.min(frames.length-1,Number($('from').value)||0));const last=Math.max(first,Math.min(frames.length-1,Number($('to').value)||0));const op=$('operation').value;visible=[];for(let i=first;i<=last;i++){const flags=get(i,'operations');const match=op==='all'||op==='idle'&&!(flags&254)||op==='viewMove'&&viewOpen(i)&&moved(i)&&!scaled(i)||op==='viewScale'&&viewOpen(i)&&scaled(i)||op==='stableStill'&&i>2&&[i-2,i-1,i].every(j=>viewOpen(j)&&!moved(j)&&!scaled(j))||Number(op)>0&&(flags&Number(op));if(match)visible.push(i)}if(!visible.includes(selected))selected=visible[0]??0;render()}
 function render(){const s=stats(visible);$('cards').replaceChildren();for(const [label,value] of [['完整帧',integer(s.count)],['累计区间',number(s.sum/1000,2)+' s'],['中位数',number(s.median)+' ms'],['P95',number(s.p95)+' ms'],['P99',number(s.p99)+' ms'],['最长帧',number(s.max)+' ms']]){const card=document.createElement('div');card.className='card';const strong=document.createElement('strong');strong.textContent=value;const span=document.createElement('span');span.textContent=label;card.append(strong,span);$('cards').append(card)}$('rangeNote').textContent='筛选 '+visible.length+' 帧；完整帧 '+s.count+'；当前记录帧 '+selected+'。';$('frame').value=selected;draw();detail();events()}
 function draw(){const canvas=$('chart'),rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const w=rect.width,h=rect.height,left=62,right=12,top=12,bottom=35,plotW=Math.max(1,w-left-right),plotH=h-top-bottom;ctx.clearRect(0,0,w,h);const max=visible.reduce((maximum,index)=>Math.max(maximum,get(index,'intervalMs')),50);ctx.font='12px system-ui';ctx.fillStyle='#a9bacd';ctx.strokeStyle='#314156';for(const value of [16.667,33.333,50,max]){const y=top+plotH*(1-value/max);ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(w-right,y);ctx.stroke();ctx.fillText(value.toFixed(1),0,y+4)}buckets=[];const width=Math.floor(plotW);for(let p=0;p<width;p++){const start=Math.floor(p*visible.length/width),end=Math.floor((p+1)*visible.length/width);if(end<=start)continue;let index=visible[start];for(let j=start+1;j<end;j++)if(get(visible[j],'intervalMs')>get(index,'intervalMs'))index=visible[j];buckets.push({x:left+p,index});const value=get(index,'intervalMs'),y=top+plotH*(1-value/max);ctx.strokeStyle=value>33.333?'#faad66':'#74d9bd';ctx.beginPath();ctx.moveTo(left+p,top+plotH);ctx.lineTo(left+p,y);ctx.stroke();const op=get(index,'operations');ctx.fillStyle=op&16?'#f783ac':op&4?'#c497ff':op&2?'#57a6ff':'#314156';ctx.fillRect(left+p,h-22,1,7)}const position=visible.indexOf(selected);if(position>=0){const x=left+(position+.5)*plotW/Math.max(1,visible.length);ctx.strokeStyle='#ffffff';ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,h-12);ctx.stroke()}if(!visible.length)ctx.fillText('当前区间没有数据',left+15,h/2)}
 function detail(){
@@ -74,12 +78,12 @@ function detail(){
   data.counterInfo.forEach((info,index)=>{const value=data.counterValues[selected]?.[index];cells($('counters'),[info.name,value==null?'不可用 / 本帧无样本':integer(value),info.unit??info.status])});
   const spans=spanRows[selected].slice().sort((a,b)=>a[2]-b[2]);
   for(const row of spans.slice(0,500))cells($('spans'),[data.metricNames[row[1]],number(row[2]),number(row[3]),number(row[4]),row[5],data.subjects[row[6]]?.label??'']);
-  $('spanNote').textContent=(data.detailed?'详细模式记录全部已采集调用。':'统计模式记录耗时达到 '+data.slowSpanMilliseconds+' ms 的调用；函数统计覆盖全部已采集调用。')+' 本帧 '+spans.length+' 条，展示前 500 条。';
+  $('spanNote').textContent=(frameTiming?'帧时间基准记录操作、帧间隔、引擎指标和记录器自身耗时。':data.detailed?'详细模式记录全部已采集调用。':'统计模式记录耗时达到 '+data.slowSpanMilliseconds+' ms 的调用；函数统计覆盖全部已采集调用。')+' 本帧 '+spans.length+' 条，展示前 500 条。';
 }
 function events(){$('events').replaceChildren();const included=new Set(visible);const rows=data.events.filter(event=>included.has(Math.min(frames.length-1,event.frame)));for(const event of rows.slice(0,500))cells($('events'),[number(event.timeMs),event.frame,event.kind,event.detail],()=>select(Math.min(frames.length-1,event.frame)));$('eventNote').textContent='当前区间 '+rows.length+' 条事件，展示前 500 条。完整事件保存在原始 JSON 中。'}
 function select(index){selected=Math.max(0,Math.min(frames.length-1,index));$('frame').value=selected;draw();detail();$('rangeNote').textContent='筛选 '+visible.length+' 帧；当前记录帧 '+selected+'。'}
 $('identity').textContent=data.id+' · '+data.startedUtc+' · '+data.stopReason;
-$('integrity').textContent='模式：'+(data.detailed?'详细调用':'逐帧统计与慢调用')+'；调用明细溢出 '+data.capacity.omittedSpans+' 条；事件溢出 '+data.capacity.omittedEvents+' 条。';
+$('integrity').textContent='模式：'+(frameTiming?'帧时间基准':data.detailed?'详细调用':'逐帧统计与慢调用')+'；调用明细溢出 '+data.capacity.omittedSpans+' 条；事件溢出 '+data.capacity.omittedEvents+' 条。';
 if(data.capacity.omittedSpans||data.capacity.omittedEvents)$('integrity').classList.add('error');
 $('from').max=$('to').max=$('frame').max=Math.max(0,frames.length-1);$('to').value=Math.max(0,frames.length-1);
 for(const id of ['from','to','operation'])$(id).onchange=filter;

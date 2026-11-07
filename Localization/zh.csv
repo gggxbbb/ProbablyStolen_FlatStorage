@@ -13,6 +13,7 @@ perf.worst,最长帧
 perf.live,实时
 perf.mode_summary,逐帧统计
 perf.mode_detail,详细调用
+perf.mode_frames,帧时间基准
 perf.view_calls,函数耗时
 perf.view_engine,引擎指标
 perf.view_events,操作事件

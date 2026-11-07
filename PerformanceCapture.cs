@@ -10,7 +10,11 @@ namespace ProbablyStolen_FlatStorage
         Controller, Discovery, SynchronizeSources, FlushChanges, ObserveWindows, ApplyView, PrepareNearby,
         Arrange, ToolsRefresh, Search, MiniMap, PointerQuery, WindowRefresh, Catalog, ScanHierarchy,
         EventRaycast, GraphicRaycast, Clipping, CanvasUpdate, WindowValidate, GridValidate, ItemValidate,
-        TabsValidate, SaveLayout, Recorder, Panel, Count
+        TabsValidate, SaveLayout, Recorder, Panel,
+        CanvasPreRender, CanvasRender, GraphicRebuild, GraphicGeometry, GraphicMaterial,
+        LayoutRebuild, TextUpdates, TextRebuild, TextGenerate, TextScale, RaycastBounds,
+        GameInput, NativeRectTransform, NativeCanvasTransform, NativeCanvasUpdate, NativeCanvasGeometry,
+        NativeFrameRender, NativePresent, Count
     }
 
     [Flags]

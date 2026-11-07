@@ -149,7 +149,8 @@ namespace ProbablyStolen_FlatStorage
             status = FlatUI.Text(toolbar, "", 7);
             status.text.color = FlatUI.Muted;
             viewport = FlatUI.Panel(root, "Viewport", Color.clear);
-            viewport.mask.enabled = true;
+            viewport.image.color = Color.white;
+            viewport.gameObject.AddComponent<UnityEngine.UI.Mask>().showMaskGraphic = false;
             content = FlatUI.Panel(viewport, "Canvas Content", Color.clear);
             content.image.raycastTarget = false;
             NativeAccess.Place(content, 0, 0, 0, 0);

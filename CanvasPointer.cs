@@ -1,9 +1,22 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace ProbablyStolen_FlatStorage
 {
+    internal sealed class StorageRaycaster : GraphicRaycaster
+    {
+        private RectTransform bounds;
+
+        public override void Raycast(PointerEventData eventData, List<RaycastResult> resultAppendList)
+        {
+            if (bounds == null) bounds = (RectTransform)transform;
+            if (RectTransformUtility.RectangleContainsScreenPoint(bounds, eventData.position, eventCamera))
+                base.Raycast(eventData, resultAppendList);
+        }
+    }
+
     internal sealed class CanvasPointer
     {
         internal readonly struct Hit

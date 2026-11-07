@@ -15,7 +15,10 @@ namespace ProbablyStolen_FlatStorage
             "CPU Render Thread Frame Time", "CPU Present Wait Time", "GPU Frame Time",
             "Draw Calls Count", "Batches Count", "SetPass Calls Count", "Triangles Count", "Vertices Count",
             "GC Allocated In Frame", "GC Used Memory", "GC Reserved Memory", "Total Used Memory",
-            "Total Reserved Memory", "System Used Memory", "Canvas.BuildBatch", "Canvas.SendWillRenderCanvases"
+            "Total Reserved Memory", "System Used Memory", "Canvas.BuildBatch", "Canvas.SendWillRenderCanvases",
+            "PlayerLoop", "Camera.Render", "Gfx.WaitForPresentOnGfxThread", "RenderLoopDevice.Idle", "GC.Collect",
+            "WaitForTargetFPS", "Gfx.WaitForGfxCommandsFromMainThread", "Canvas.UpdateBatches",
+            "UI.Layout", "UI.Render", "Vertex Buffer Upload In Frame Bytes", "Index Buffer Upload In Frame Bytes"
         };
         internal readonly PerfCounterInfo[] Info = new PerfCounterInfo[requested.Length];
         internal readonly List<PerfCounterInfo> Available = new List<PerfCounterInfo>();

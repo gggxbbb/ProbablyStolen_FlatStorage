@@ -138,7 +138,7 @@ internal static class PerformanceChecks
         {
             var tuple = target.GetType(); var owner = (Type)tuple.GetField("Item1")!.GetValue(target)!;
             var name = (string)tuple.GetField("Item2")!.GetValue(target)!;
-            var methods = owner.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(m => m.Name == name).ToList();
+            var methods = owner.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly).Where(m => m.Name == name && !m.IsGenericMethod && (owner.FullName != "UnityEngine.UI.GraphicRaycaster" || !m.IsStatic)).ToList();
             Check(methods.Count == 1 && methods[0].GetMethodBody() != null, "真实性能采样目标：" + owner.FullName + "." + name);
         }
         Console.WriteLine("  已核验 " + targets.Length + " 个实际托管采样入口。");

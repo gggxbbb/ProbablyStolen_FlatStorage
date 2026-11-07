@@ -2,7 +2,7 @@
 
 《深空当铺》（Probably Stolen）的全局仓储模组。在可平移、缩放的画布中展开容器的全部已解锁页面和机器控件，保留原有网格、物品占格及容量，支持跨容器、跨机器、跨页面拖放。
 
-当前代码使用版本号 **1.3.1**，声明支持游戏兼容版本 `0.46D`，当前实测主菜单显示 `VERSION 100-Rev12`。支持视图平移、窗口刷新、指针检测和小地图更新的性能采集。游戏内回归项目见 [验证清单](GAMEPLAY_CHECKLIST.md)。
+当前代码使用版本号 **1.3.2**，声明支持游戏兼容版本 `0.46D`，当前实测主菜单显示 `VERSION 100-Rev12`。支持视图平移、窗口刷新、指针检测和小地图更新的性能采集。游戏内回归项目见 [验证清单](GAMEPLAY_CHECKLIST.md)。
 
 ## 安装与打开
 
@@ -195,7 +195,7 @@ Release 构建和 64 项游戏外测试已通过。测试覆盖原生清单读�
 .\Publish.cmd -ValidateOnly
 ```
 
-该命令构建独立发布目录、运行游戏外测试，核对程序集版本、资源文件、双语 CSV、预览图、Workshop VDF 和压缩包内容。安装包输出为 `dist/FlatStorage-1.3.1.zip`，上传目录与生成的 `upload.vdf` 位于 `.work/releases/`。发布包保留 `Localization/zh.csv` 和 `Localization/en.csv` 的目录结构。
+该命令构建独立发布目录、运行游戏外测试，核对程序集版本、资源文件、双语 CSV、预览图、Workshop VDF 和压缩包内容。安装包输出为 `dist/FlatStorage-1.3.2.zip`，上传目录与生成的 `upload.vdf` 位于 `.work/releases/`。发布包保留 `Localization/zh.csv` 和 `Localization/en.csv` 的目录结构。
 
 可以直接调用 PowerShell 脚本并指定游戏目录：
 
@@ -203,7 +203,7 @@ Release 构建和 64 项游戏外测试已通过。测试覆盖原生清单读�
 pwsh -NoProfile -File .\scripts\Publish-Workshop.ps1 -ValidateOnly -GameDir 'D:\Games\Probably Stolen'
 ```
 
-`preview.png` 是预览图源文件，`Workshop/description.zh.txt` 和 `Workshop/description.en.txt` 保存完整中英文说明，`Workshop/upload.vdf` 保存目标条目配置。打包工具生成用于上传的 JPEG 预览图。常规发布保留创意工坊现有标题与说明；明确更新说明时，分别维护简体中文和英语页面，每份文案的 UTF-8 长度需小于 8000 字节。
+`preview.png` 是预览图源文件，`Workshop/description.zh.txt` 和 `Workshop/description.en.txt` 保存完整中英文说明，`Workshop/upload.vdf` 保存目标条目配置。每个发布版本在 `Workshop/changelogs/<version>.txt` 中维护更新日志，打包时写入上传配置。打包工具生成用于上传的 JPEG 预览图。常规发布保留创意工坊现有标题与说明；明确更新说明时，分别维护简体中文和英语页面，每份文案的 UTF-8 长度需小于 8000 字节。
 
 完成游戏内验收后，运行 `.\Publish.cmd` 进入上传流程。脚本会再次构建和验证发布包，显示公开的 Workshop 条目 `3833606510` 与应用 `4348910`，并要求手动输入 `PUBLISH`。随后输入 Steam 账户名，在 SteamCMD 中完成密码与 Steam Guard 验证。上传完成后核对 SteamCMD 结果和创意工坊页面。
 

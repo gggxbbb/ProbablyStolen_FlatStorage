@@ -1,0 +1,31 @@
+Flat Storage 1.3.2
+
+[h2]性能与交互修复[/h2]
+[list]
+[*]修复大量容器同时显示时，平移视图反复触发图形重建造成的卡顿。
+[*]优化容器鼠标命中检查与视口裁剪，减少持续移动时的界面开销。
+[*]修复按 Esc 取消拖动或关闭仓储时，同时打开原生暂停菜单的问题。
+[/list]
+
+[h2]性能分析与问题反馈[/h2]
+[list]
+[*]加入游戏内性能分析面板，提供逐帧曲线、中位数、P95、P99、最长帧定位和操作标记。
+[*]提供逐帧统计、详细调用、帧时间基准三种录制模式，细分输入、命中检查、裁剪、图形、文字和 Unity 阶段耗时。
+[*]停止录制后自动导出 ZIP 和离线 HTML 报告；报告支持按实际平移、缩放、静止和物品拖动筛选，并包含原始 JSON、CSV 和调用时间线。
+[*]完善中英文使用说明，并补充实际游戏截图，方便查看布局、搜索和性能面板。
+[/list]
+
+[h2]Performance and interaction fixes[/h2]
+[list]
+[*]Fixed severe panning stutter caused by repeated UI geometry rebuilds when many containers are visible.
+[*]Reduced pointer hit-testing and viewport clipping overhead during movement.
+[*]Fixed Esc also opening the game's pause menu when cancelling an item drag or closing the storage canvas.
+[/list]
+
+[h2]Performance analysis and bug reports[/h2]
+[list]
+[*]Added an in-game performance panel with frame-time charts, median, P95, P99, worst-frame selection and operation markers.
+[*]Added frame summaries, detailed calls and a frame-timing baseline, with input, raycast, clipping, geometry, text and Unity phase timings.
+[*]Recordings export automatically to ZIP and offline HTML. Filter actual panning, zooming, stationary views and item dragging, and inspect raw JSON, CSV and call timelines.
+[*]Updated both language descriptions and added real in-game screenshots of the layout, search and performance panel.
+[/list]

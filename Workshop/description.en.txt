@@ -26,14 +26,14 @@ Search accessible canvas pages by item name, identifier or category, including l
 Matches receive a highlighted outline while other items become dimmer. Press Enter in the search field or click Next to cycle through matching items. Scrollable inventories move to the selected result. Clear restores the full view.
 
 [h2]Container tree and mini map[/h2]
-Containers opens a tree showing the actual relationships between parent and nested containers. Click an arrow to expand or collapse a branch, or click a name to focus that group. Hover over a name to read its full container label. The directory updates when containers move, appear, disappear or change names, preserving valid collapsed branches and the scroll position. Deep trees support horizontal scrolling.
+Containers shows parent and nested containers as a tree. Expand or collapse branches, click names to focus groups, and hover to read full labels. Changes preserve valid collapsed branches and scrolling; deep trees support horizontal scrolling.
 
 The mini map sits above the toolbar at the bottom right and shows group positions and the current viewport. Click a group to focus it, or click empty map space to move the view. Use Mini map to show or hide it.
 
 [h2]Automatic storage[/h2]
 Auto store organizes your owned loose items from the shop's main cabinet and the tables inside and outside the counter window. Destinations are owned, opened, accessible ordinary containers whose existing contents establish what belongs there. Container objects, machines and fixed facilities remain in place.
 
-Matching considers item categories, contraband status and level, stolen status, hazardous-waste status and other item attributes. A container's profile reflects the grid space occupied by its existing contents. A destination must share an item category with the incoming item. Empty containers are excluded from automatic destinations, and unmatched items stay where they are. When a preferred container runs out of space, the remaining quantity can be assigned to other matching containers.
+Matching uses categories, contraband level, stolen status and hazardous attributes, weighted by occupied grid space. Destinations must share an item category. Empty containers have no category profile; unmatched items stay in place. Full destinations pass remaining quantities to other matches.
 
 [b]Review before moving:[/b] the preview lists destinations, quantities, match percentages and reasons for items being kept. Confirm transfer starts the planned moves. Every move respects the game's ownership, locking, pinning, nesting, grid-space and quantity restrictions.
 
@@ -44,7 +44,7 @@ The preview is checked again when you confirm. A changed save, scene, customer o
 [h2]Automatic arrangement and manual layouts[/h2]
 Auto arrange is enabled by default and saved per scene. It places the two tables near the center, the main cabinet below them, and containers around that area. Nested containers stay near their parents, similar contents and labels influence grouping, and similar machines are placed near one another. All pages belonging to one object move as a group.
 
-Adding or removing accessible containers, changing their parent, resizing pages or resizing the screen updates the layout. Updates wait until dragging or panning ends and preserve the current pan and zoom. Ordinary item and quantity changes keep group positions stable. Click Arrange to regroup using the current contents and labels.
+Structural changes update the layout after dragging or panning ends, preserving pan and zoom. Ordinary item changes keep positions stable. Click Arrange to regroup using current contents and labels.
 
 Turn Auto arrange off to place groups manually. Their positions are saved, and new groups appear outside the existing layout. Turning it on arranges the current scene again.
 
@@ -64,9 +64,16 @@ Existing scenes retain their saved zoom and arrangement choice. Group positions,
 
 The interface follows the game's language and includes Simplified Chinese and English. Groups outside the viewport receive fewer display updates and refresh when they return into view. Machine production, item consumption and game time follow the game's normal rules.
 
+[h2]Performance analysis and stutter reports[/h2]
+Version 1.3.2 improves panning with many visible containers, pointer hit testing and clipping, and fixes Esc opening the pause menu when cancelling a drag.
+
+Open Profiler in the bottom toolbar. Choose Statistics, Full calls or Frame timing, start recording and reproduce the issue. The panel shows frame times, median, P95, P99 and the worst frame. Add markers to identify actions; recording continues while the panel is collapsed or closed.
+
+Stopping exports a ZIP and offline HTML report. Filter actual panning, zooming, stationary views and item dragging, and inspect UI calls and Unity phase timings. Use Copy path to copy the export folder location. Include the complete ZIP, reproduction steps and zoom level with a stutter report.
+
 [h2]Version and links[/h2]
-[b]Mod version:[/b] 1.3.0
-[b]Supported game compatibility version:[/b] 0.46D, shown as VERSION 100-Rev6 in the main menu.
+[b]Mod version:[/b] 1.3.2
+[b]Supported game compatibility version:[/b] 0.46D; tested with main-menu VERSION 100-Rev12.
 
 [url=https://github.com/gggxbbb/ProbablyStolen_FlatStorage]Source code and instructions[/url]
 [url=https://github.com/gggxbbb/ProbablyStolen_FlatStorage/issues]Report an issue[/url]

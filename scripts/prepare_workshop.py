@@ -42,7 +42,10 @@ def prepare(root: Path, content: Path, output: Path, version: str) -> None:
         raise ValueError("Each Workshop description must be smaller than 8,000 UTF-8 bytes")
     item["contentfolder"] = content.resolve().as_posix()
     item["previewfile"] = preview.resolve().as_posix()
-    item["changenote"] = f"Flat Storage {version}"
+    changenote = (root / "Workshop" / "changelogs" / f"{version}.txt").read_text(encoding="utf-8").strip()
+    if not changenote:
+        raise ValueError("Workshop changelog must contain text")
+    item["changenote"] = changenote
     if not content.is_dir() or not (content / "ProbablyStolen_FlatStorage.dll").is_file():
         raise ValueError("The release content directory is incomplete")
     target = output / "upload.vdf"

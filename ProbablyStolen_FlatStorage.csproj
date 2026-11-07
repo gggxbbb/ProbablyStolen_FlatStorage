@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
     <AssemblyName>ProbablyStolen_FlatStorage</AssemblyName>
-    <Version>1.3.1</Version>
+    <Version>1.3.2</Version>
     <RootNamespace>ProbablyStolen_FlatStorage</RootNamespace>
     <Nullable>disable</Nullable>
     <!-- 项目位于游戏目录内的 Modding\ProbablyStolen_FlatStorage。 -->
